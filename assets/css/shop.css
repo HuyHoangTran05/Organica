@@ -22,8 +22,49 @@
 
 .product .filter-list { margin-block-end: 40px; }
 
+/* Bring the same pill-style filter UI from home page */
+.filter-list {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	align-items: center;
+	gap: 20px;
+	margin-block-end: 50px;
+}
+
+.filter-btn {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 200px;
+	background-color: var(--mint-cream);
+	color: var(--gunmetal-2);
+	padding: 15px 20px;
+	font-size: var(--fs-5);
+	font-family: var(--ff-playfair-display);
+	font-weight: var(--fw-600);
+}
+
+.filter-btn.active .default,
+.filter-btn .color { display: block; }
+
+.filter-btn .default,
+.filter-btn.active .color { display: none; }
+
+.filter-btn.active {
+	background-color: var(--emerald);
+	color: var(--white);
+}
+
 /* Use main.css grid-list defaults; increase columns on wide screens if needed */
 @media (min-width: 992px) {
 	.product .grid-list { grid-template-columns: repeat(4, 1fr); }
+
+	.filter-btn {
+		padding: 30px;
+		gap: 15px;
+	}
+
+	.filter-btn > img { transform: scale(1.5); }
 }
 

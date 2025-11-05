@@ -13,7 +13,7 @@
           <figure class="card-banner">
             <img src="${p.image}" width="189" height="189" loading="lazy" alt="${p.name}">
             <div class="btn-wrapper">
-              <button class="product-btn" aria-label="Add to Whishlist">
+              <button class="product-btn btn-add-to-wishlist" aria-label="Add to Whishlist" data-product-id="${p.id}">
                 <ion-icon name="heart-outline"></ion-icon>
                 <div class="tooltip">Add to Whishlist</div>
               </button>
@@ -45,7 +45,7 @@
           <figure class="card-banner">
             <img src="${p.image}" width="100" height="100" loading="lazy" alt="${p.name}">
             <div class="btn-wrapper">
-              <button class="product-btn" aria-label="Add to Whishlist">
+              <button class="product-btn btn-add-to-wishlist" aria-label="Add to Whishlist" data-product-id="${p.id}">
                 <ion-icon name="heart-outline"></ion-icon>
                 <div class="tooltip">Add to Whishlist</div>
               </button>
@@ -102,6 +102,34 @@
     }catch(e){ console.error('cart refresh failed', e); }
   }
 
+  async function refreshHeaderWishlist(){
+    try{
+      const res = await fetch('/api/wishlist');
+      const data = await res.json();
+      const badge = document.querySelector('[data-panel-btn="whishlist"] .btn-badge');
+      if(badge){ badge.textContent = String(data.items?.length||0).padStart(2,'0'); }
+      const panel = document.querySelector('.aside [data-side-panel="whishlist"] .panel-list');
+      if(panel){
+        panel.innerHTML = (data.items||[]).map(it => `
+          <li class="panel-item">
+            <a href="./product-details.html" class="panel-card">
+              <figure class="item-banner"><img src="${it.image}" width="46" height="46" loading="lazy" alt="${it.name}"></figure>
+              <div><p class="item-title">${it.name}</p><span class="item-value">${fmtPrice(it.price)}</span></div>
+              <button class="item-close-btn" aria-label="Remove item" data-wl-remove-id="${it.productId}"><ion-icon name="close-outline"></ion-icon></button>
+            </a>
+          </li>`).join('');
+        panel.querySelectorAll('[data-wl-remove-id]')?.forEach(btn=>{
+          btn.addEventListener('click', async (ev)=>{
+            ev.preventDefault();
+            const id = btn.getAttribute('data-wl-remove-id');
+            await fetch(`/api/wishlist/remove/${id}`, { method: 'DELETE' });
+            refreshHeaderWishlist();
+          });
+        });
+      }
+    }catch(e){ console.error('wishlist refresh failed', e); }
+  }
+
   async function fetchAndRender(category){
     const url = new URL(PRODUCTS_API, window.location.origin);
     if(category){ url.searchParams.set('category', category); }
@@ -150,6 +178,19 @@
       };
       bindCartButtons();
 
+      // bind add-to-wishlist
+      const bindWishlistButtons = () => {
+        document.querySelectorAll('.btn-add-to-wishlist').forEach(btn => {
+          btn.addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            const id = btn.getAttribute('data-product-id');
+            await fetch('/api/wishlist/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId: id }) });
+            refreshHeaderWishlist();
+          });
+        });
+      };
+      bindWishlistButtons();
+
       // wire filter buttons
       const btns = Array.from(document.querySelectorAll('.filter-list .filter-btn'));
       btns.forEach(btn => {
@@ -165,12 +206,14 @@
           if(topList2 && Array.isArray(top2)){
             topList2.innerHTML = top2.map(createTopCard).join('');
           }
-          bindCartButtons();
+      bindCartButtons();
+      bindWishlistButtons();
         });
       });
 
-      // initial refresh cart
+      // initial refresh cart & wishlist
       refreshHeaderCart();
+      refreshHeaderWishlist();
     }catch(err){ console.error('Failed to load products', err); }
   }
 

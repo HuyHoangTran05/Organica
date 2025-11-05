@@ -60,6 +60,11 @@ function getSessionCart(req){
   return req.session.cart;
 }
 
+function getSessionWishlist(req){
+  if(!req.session.wishlist) req.session.wishlist = {}; // { productId: true }
+  return req.session.wishlist;
+}
+
 async function buildCartResponse(cart){
   let items = [];
   let subtotal = 0;
@@ -202,8 +207,8 @@ app.patch('/api/cart/update', async (req, res) => {
     const { productId, quantity } = req.body;
     if(!productId) return res.status(400).json({ error: 'productId required' });
     const cart = getSessionCart(req);
-    if(quantity <= 0){ delete cart[productId]; }
-    else { cart[productId] = Math.max(1, parseInt(quantity,10)||1); }
+    // Clamp to minimum 1; do not delete on <=0 (removal must use DELETE endpoint)
+    cart[productId] = Math.max(1, parseInt(quantity,10)||1);
     const result = await buildCartResponse(cart);
     res.json(result);
   } catch (err) {
@@ -233,6 +238,58 @@ app.delete('/api/cart/clear', async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Failed to clear cart' });
   }
+});
+
+// WISHLIST ENDPOINTS
+async function buildWishlistResponse(wishlist){
+  const items = [];
+  for(const pid of Object.keys(wishlist||{})){
+    const product = await getProductBasic(pid);
+    if(!product) continue;
+    items.push({
+      productId: product.product_id,
+      name: product.name,
+      slug: product.slug,
+      image: product.image_url,
+      price: Number(product.price||0)
+    });
+  }
+  return { items };
+}
+
+app.get('/api/wishlist', async (req, res) => {
+  try{
+    const wl = getSessionWishlist(req);
+    res.json(await buildWishlistResponse(wl));
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to load wishlist' }); }
+});
+
+app.post('/api/wishlist/add', async (req, res) => {
+  try{
+    const { productId } = req.body || {};
+    if(!productId) return res.status(400).json({ error: 'productId required' });
+    const prod = await getProductBasic(productId);
+    if(!prod) return res.status(404).json({ error: 'Product not found' });
+    const wl = getSessionWishlist(req);
+    wl[productId] = true;
+    res.json(await buildWishlistResponse(wl));
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to add to wishlist' }); }
+});
+
+app.delete('/api/wishlist/remove/:productId', async (req, res) => {
+  try{
+    const { productId } = req.params;
+    const wl = getSessionWishlist(req);
+    delete wl[productId];
+    res.json(await buildWishlistResponse(wl));
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to remove from wishlist' }); }
+});
+
+app.delete('/api/wishlist/clear', async (req, res) => {
+  try{
+    req.session.wishlist = {};
+    res.json(await buildWishlistResponse({}));
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to clear wishlist' }); }
 });
 
 // ORDER ENDPOINT
