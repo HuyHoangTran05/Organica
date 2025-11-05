@@ -1,0 +1,35 @@
+/*-----------------------------------*\
+	#about.css
+\*-----------------------------------*/
+
+/* Page section spacing is inherited from main.css (.section). */
+
+.about-section .section-title {
+	margin-block: 10px 15px;
+}
+
+.about-text {
+	color: var(--roman-silver);
+	font-size: var(--fs-4);
+	line-height: 1.8;
+	max-width: 70ch;
+	margin-block: 10px 20px;
+}
+
+.about-list {
+	display: grid;
+	gap: 10px;
+	margin-block-start: 10px;
+}
+
+.about-item {
+	color: var(--eerie-black);
+	background-color: var(--mint-cream);
+	padding: 14px 16px;
+	border-left: 3px solid var(--emerald);
+}
+
+@media (min-width: 768px) {
+	.about-text { max-width: 80ch; }
+}
+

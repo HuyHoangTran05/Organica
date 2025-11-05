@@ -1,0 +1,29 @@
+/*-----------------------------------*\
+	#shop.css
+\*-----------------------------------*/
+
+.breadcrumb {
+	background-image: url("../images/breadcumb-bg.jpg");
+	background-size: cover;
+	background-position: center;
+	background-color: var(--mint-cream);
+	padding: 50px 0;
+	text-align: center;
+}
+
+.breadcrumb .section-subtitle { margin-block-end: 8px; }
+
+.breadcrumb-path {
+	color: var(--roman-silver);
+	margin-block-start: 8px;
+}
+
+.breadcrumb-path a { color: var(--emerald); }
+
+.product .filter-list { margin-block-end: 40px; }
+
+/* Use main.css grid-list defaults; increase columns on wide screens if needed */
+@media (min-width: 992px) {
+	.product .grid-list { grid-template-columns: repeat(4, 1fr); }
+}
+
