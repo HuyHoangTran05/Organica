@@ -1,10 +1,10 @@
-// Minimal Express API to serve products from MySQL and static site files
+// Minimal Express API to serve products from MongoDB and static site files
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const mysql = require('mysql2/promise');
 const session = require('express-session');
+const { MongoClient, ObjectId } = require('mongodb');
 
 const app = express();
 app.use(cors());
@@ -20,39 +20,46 @@ app.use(session({
 const publicDir = __dirname;
 app.use(express.static(publicDir));
 
-// MySQL pool
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'organica',
-  port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
+// MongoDB client
+const MONGO_URL = process.env.MONGO_URL || 'mongodb+srv://23020536_db_user:RCq52HQhlAtD30Sg@organica.fob1mqp.mongodb.net/';
+const DB_NAME = process.env.DB_NAME || 'organica';
+let mongoClient;
+let db;
+
+async function connectMongo(){
+  if(db) return db;
+  mongoClient = new MongoClient(MONGO_URL);
+  await mongoClient.connect();
+  db = mongoClient.db(DB_NAME);
+  return db;
+}
 
 // Helper: map DB rows to frontend product card shape
-function mapProductRow(row) {
+function mapProductDoc(doc) {
   return {
-    id: row.product_id,
-    name: row.product_name,
-    price: Number(row.price || 0),
-    compareAt: row.compare_at_price != null ? Number(row.compare_at_price) : null,
-    image: row.image_url || './assets/images/product-1.png',
-    slug: row.slug,
+    id: String(doc._id),
+    name: doc.name,
+    price: Number(doc.price || 0),
+    compareAt: doc.compareAt != null ? Number(doc.compareAt) : null,
+    image: doc.image || './assets/images/product-1.png',
+    slug: doc.slug,
   };
 }
 
 async function getProductBasic(productId){
-  const [rows] = await pool.query(
-    `SELECT p.id AS product_id, p.name, p.slug, v.price,
-            (SELECT url FROM product_images i WHERE i.product_id = p.id ORDER BY is_primary DESC, sort_order ASC, id ASC LIMIT 1) AS image_url
-     FROM products p
-     JOIN product_variants v ON v.product_id=p.id AND v.is_default=1
-     WHERE p.id = ?`, [productId]
-  );
-  return rows[0];
+  try{
+    await connectMongo();
+    const _id = new ObjectId(String(productId));
+    const doc = await db.collection('products').findOne({ _id });
+    if(!doc) return null;
+    return {
+      product_id: String(doc._id),
+      name: doc.name,
+      slug: doc.slug,
+      price: Number(doc.price||0),
+      image_url: doc.image || './assets/images/product-1.png'
+    };
+  }catch(e){ return null; }
 }
 
 function getSessionCart(req){
@@ -95,64 +102,41 @@ async function buildCartResponse(cart){
   };
 }
 
-// GET /api/products -> list default variants with primary image
+// GET /api/products -> list products with primary image
 app.get('/api/products', async (req, res) => {
   try {
+    await connectMongo();
     const { category, page = 1, limit = 24 } = req.query;
     const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 24, 1), 48);
     const offset = (Math.max(parseInt(page, 10) || 1, 1) - 1) * safeLimit;
 
-    const params = [];
-    let where = "WHERE p.status = 'active'";
-    if (category) {
-      where += ' AND c.slug = ?';
-      params.push(String(category));
-    }
-
-    const [rows] = await pool.query(
-      `SELECT p.id AS product_id, p.name AS product_name, p.slug,
-              v.price, v.compare_at_price,
-              (SELECT url FROM product_images i WHERE i.product_id = p.id ORDER BY is_primary DESC, sort_order ASC, id ASC LIMIT 1) AS image_url
-       FROM products p
-       JOIN product_variants v ON v.product_id = p.id AND v.is_default = 1
-       LEFT JOIN categories c ON c.id = p.category_id
-       ${where}
-       ORDER BY p.id DESC
-       LIMIT ? OFFSET ?`,
-      [...params, safeLimit, offset]
-    );
-    res.json(rows.map(mapProductRow));
+    const query = { status: 'active' };
+    if(category){ query.categorySlug = String(category); }
+    const rows = await db.collection('products')
+      .find(query)
+      .sort({ _id: -1 })
+      .skip(offset)
+      .limit(safeLimit)
+      .toArray();
+    res.json(rows.map(mapProductDoc));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to load products' });
   }
 });
 
-// GET /api/top-products -> arbitrary latest 9 for the top-product section
+// GET /api/top-products -> curated set by slug order
 app.get('/api/top-products', async (req, res) => {
   try {
-    const [rows] = await pool.query(`
-      SELECT p.id AS product_id, p.name AS product_name, p.slug,
-             v.price, v.compare_at_price,
-             (SELECT url FROM product_images i WHERE i.product_id = p.id ORDER BY is_primary DESC, sort_order ASC, id ASC LIMIT 1) AS image_url
-      FROM products p
-      JOIN product_variants v ON v.product_id = p.id AND v.is_default = 1
-      WHERE p.status = 'active'
-      ORDER BY CASE p.slug
-        WHEN 'fresh-orangey' THEN 1
-        WHEN 'key-lime' THEN 2
-        WHEN 'fresh-watermelon' THEN 3
-        WHEN 'pomagranate-fruit' THEN 5
-        WHEN 'lens-results-broccoli' THEN 6
-        WHEN 'lens-results-spinach' THEN 7
-        WHEN 'leaf-lettuce' THEN 9
-        WHEN 'beef-steak' THEN 10
-        WHEN 'salmon-fillet' THEN 11
-        ELSE 999 END,
-        p.id DESC
-      LIMIT 9;
-    `);
-    res.json(rows.map(mapProductRow));
+    await connectMongo();
+    const order = ['fresh-orangey','key-lime','fresh-watermelon','pomagranate-fruit','lens-results-broccoli','lens-results-spinach','leaf-lettuce','beef-steak','salmon-fillet'];
+    const docs = await db.collection('products').find({ status: 'active' }).toArray();
+    docs.sort((a,b)=>{
+      const ia = order.indexOf(a.slug); const ib = order.indexOf(b.slug);
+      const sa = ia === -1 ? 999 : ia; const sb = ib === -1 ? 999 : ib;
+      if(sa !== sb) return sa - sb; return String(b._id).localeCompare(String(a._id));
+    });
+    res.json(docs.slice(0,9).map(mapProductDoc));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to load top products' });
@@ -162,10 +146,10 @@ app.get('/api/top-products', async (req, res) => {
 // GET /api/categories -> list categories
 app.get('/api/categories', async (_req, res) => {
   try {
-    const [rows] = await pool.query(`
-      SELECT id, name, slug FROM categories ORDER BY sort_order ASC, name ASC;
-    `);
-    res.json(rows);
+    await connectMongo();
+    const rows = await db.collection('categories').find({}).sort({ sort_order: 1, name: 1 }).toArray();
+    // normalize id to string for consistency
+    res.json(rows.map(r=>({ id: String(r._id), name: r.name, slug: r.slug })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to load categories' });
@@ -294,38 +278,44 @@ app.delete('/api/wishlist/clear', async (req, res) => {
 
 // ORDER ENDPOINT
 app.post('/api/orders', async (req, res) => {
-  const conn = await pool.getConnection();
   try {
+    await connectMongo();
     const { firstName, lastName, email, phone, address, city, zip } = req.body || {};
     const cart = await buildCartResponse(getSessionCart(req));
     if(!cart.items.length) return res.status(400).json({ error: 'Cart is empty' });
 
-    await conn.beginTransaction();
     const orderNumber = 'ORD-' + Date.now().toString(36).toUpperCase();
-    const [resOrder] = await conn.query(
-      `INSERT INTO orders (order_number, status, subtotal, shipping, total, currency, customer_name, email, phone, address, city, zip)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [orderNumber, 'pending', cart.subtotal, cart.shipping, cart.total, 'USD',
-       `${firstName||''} ${lastName||''}`.trim(), email||null, phone||null, address||null, city||null, zip||null]
-    );
-    const orderId = resOrder.insertId;
-    for(const it of cart.items){
-      await conn.query(
-        `INSERT INTO order_items (order_id, product_id, name, price, quantity, line_total)
-         VALUES (?,?,?,?,?,?)`,
-        [orderId, it.productId, it.name, it.price, it.quantity, it.lineTotal]
-      );
-    }
-    await conn.commit();
-    // clear cart after order
+    const orderDoc = {
+      orderNumber,
+      status: 'pending',
+      subtotal: cart.subtotal,
+      shipping: cart.shipping,
+      total: cart.total,
+      currency: 'USD',
+      customer: { name: `${firstName||''} ${lastName||''}`.trim(), email: email||null, phone: phone||null },
+      address: { address: address||null, city: city||null, zip: zip||null },
+      items: cart.items.map(it=>({ productId: it.productId, name: it.name, price: it.price, quantity: it.quantity, lineTotal: it.lineTotal })),
+      createdAt: new Date()
+    };
+    const r = await db.collection('orders').insertOne(orderDoc);
     req.session.cart = {};
-    res.json({ orderId, orderNumber, total: cart.total });
+    res.json({ orderId: String(r.insertedId), orderNumber, total: cart.total });
   } catch (err) {
-    await conn.rollback();
     console.error(err);
     res.status(500).json({ error: 'Failed to place order' });
-  } finally {
-    conn.release();
+  }
+});
+
+// HEALTH CHECK
+app.get('/api/health', async (_req, res) => {
+  try {
+    await connectMongo();
+    const productsCount = await db.collection('products').countDocuments();
+    const categoriesCount = await db.collection('categories').countDocuments();
+    res.json({ ok: true, db: DB_NAME, products: productsCount, categories: categoriesCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: err.message || 'health failed' });
   }
 });
 

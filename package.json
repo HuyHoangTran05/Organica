@@ -7,14 +7,16 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "seed:mongo": "node db/mongo-seed.js",
+    "migrate:mongo": "node db/mongo-migrate.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-session": "^1.17.3",
-    "mysql2": "^3.9.4"
+    "mongodb": "^6.8.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
