@@ -88,3 +88,25 @@ npm start
 # Check health
 # http://localhost:3000/api/health -> { ok: true, db: "organica", products: N, categories: M }
 ```
+
+## Authentication (JWT) & Roles (Legacy)
+
+- Endpoints:
+  - `POST /api/auth/signup` → body `{ name, email, password }` → returns `{ user, accessToken, refreshToken }`
+  - `POST /api/auth/login` → body `{ email, password }` → returns `{ user, accessToken, refreshToken }`
+  - `POST /api/auth/refresh` → body `{ refreshToken }` → returns `{ accessToken, refreshToken }` (rotation)
+  - `POST /api/auth/logout` → body `{ refreshToken }`
+  - `GET /api/me` → requires `Authorization: Bearer <accessToken>`
+  - `GET /api/admin/health` → requires admin role
+
+- Roles: `user` by default. Set an admin at startup using `.env`:
+
+```dotenv
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=StrongPassword123!
+```
+
+On first start with these set, an admin user is created. Remove the vars afterwards.
+
+- Cart/Wishlist: when logged in, data is stored per user; guest users continue to use session storage. On login/signup, the guest session is merged into the user account.
+
