@@ -47,8 +47,9 @@ const publicDir = __dirname;
 app.use(express.static(publicDir));
 
 // MongoDB client
+// Mongo config: allow a dedicated MONGO_DB_NAME to avoid confusion with MySQL DB_NAME
 const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
-const DB_NAME = process.env.DB_NAME || 'organica';
+const DB_NAME = process.env.MONGO_DB_NAME || process.env.DB_NAME || 'organica';
 let mongoClient;
 let db;
 
@@ -741,9 +742,21 @@ app.post('/api/auth/logout', authLimiter, async (req, res) => {
   }catch(err){ console.error(err); res.status(500).json({ error: 'Logout failed' }); }
 });
 
-// Support Keycloak session (req.user set by adapter) or legacy JWT header
+// Support Keycloak session (req.user set by adapter) OR legacy JWT bearer even when Keycloak is enabled
 const meMiddleware = keycloak
-  ? (req, res, next) => { return (req.user && req.user.id) ? next() : res.status(401).json({ error: 'Unauthorized' }); }
+  ? (req, res, next) => {
+      if (req.user && req.user.id) return next();
+      const hdr = req.headers['authorization'] || '';
+      const m = /^Bearer (.+)$/.exec(hdr);
+      if (m) {
+        try {
+          const decoded = jwt.verify(m[1], JWT_SECRET);
+          req.user = { id: decoded.sub, roles: decoded.roles || ['user'] };
+          return next();
+        } catch (_e) { /* fallthrough */ }
+      }
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
   : authRequired();
 
 app.get('/api/me', meMiddleware, async (req, res) => {
@@ -793,6 +806,146 @@ app.get('/api/admin/health', adminHealthMiddleware, async (_req, res) => {
   }catch(err){ console.error(err); res.status(500).json({ error: 'Admin health failed' }); }
 });
 
+// --- Admin: Products CRUD ---
+// List products (admin)
+app.get('/api/admin/products', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const { q, page = 1, limit = 20, status } = req.query || {};
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const offset = (Math.max(parseInt(page, 10) || 1, 1) - 1) * safeLimit;
+    const filter = {};
+    if(q){ filter.$or = [ { name: { $regex: String(q), $options: 'i' } }, { slug: { $regex: String(q), $options: 'i' } } ]; }
+    if(status){ filter.status = String(status); }
+    const cursor = db.collection('products').find(filter).sort({ _id: -1 }).skip(offset).limit(safeLimit);
+    const rows = await cursor.toArray();
+    const total = await db.collection('products').countDocuments(filter);
+    res.json({ items: rows.map(r=>({ ...r, _id: String(r._id) })), page: Number(page), limit: safeLimit, total });
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to list products' }); }
+});
+
+// Create product
+app.post('/api/admin/products', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const { name, slug, price = 0, compareAt = null, image = '', categorySlug = null, status = 'active' } = req.body || {};
+    if(!name || !slug) return res.status(400).json({ error: 'name and slug are required' });
+    const doc = { name: String(name), slug: String(slug), price: Number(price)||0, image: String(image||''), status: String(status||'active'), updatedAt: new Date(), createdAt: new Date() };
+    if(compareAt != null) doc.compareAt = Number(compareAt);
+    if(categorySlug) doc.categorySlug = String(categorySlug);
+    const r = await db.collection('products').insertOne(doc);
+    res.json({ id: String(r.insertedId) });
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to create product' }); }
+});
+
+// Update product
+app.patch('/api/admin/products/:id', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const { id } = req.params;
+    const _id = new ObjectId(String(id));
+    const allowed = ['name','slug','price','compareAt','image','categorySlug','status'];
+    const set = { updatedAt: new Date() };
+    for(const k of allowed){ if(req.body && k in req.body){ set[k] = req.body[k]; } }
+    if('price' in set) set.price = Number(set.price)||0;
+    if('compareAt' in set && set.compareAt != null) set.compareAt = Number(set.compareAt);
+    const r = await db.collection('products').updateOne({ _id }, { $set: set });
+    res.json({ ok: r.matchedCount === 1 });
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to update product' }); }
+});
+
+// Delete product
+app.delete('/api/admin/products/:id', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const _id = new ObjectId(String(req.params.id));
+    const r = await db.collection('products').deleteOne({ _id });
+    res.json({ ok: r.deletedCount === 1 });
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to delete product' }); }
+});
+
+// --- Admin: Categories CRUD ---
+app.get('/api/admin/categories', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const { q } = req.query || {};
+    const filter = {};
+    if(q){ filter.$or = [ { name: { $regex: String(q), $options: 'i' } }, { slug: { $regex: String(q), $options: 'i' } } ]; }
+    const rows = await db.collection('categories').find(filter).sort({ sort_order: 1, name: 1 }).toArray();
+    res.json(rows.map(r=>({ ...r, _id: String(r._id) })));
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to list categories' }); }
+});
+
+app.post('/api/admin/categories', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const { name, slug, sort_order = 0 } = req.body || {};
+    if(!name || !slug) return res.status(400).json({ error: 'name and slug are required' });
+    const doc = { name: String(name), slug: String(slug), sort_order: Number(sort_order)||0, createdAt: new Date(), updatedAt: new Date() };
+    const r = await db.collection('categories').insertOne(doc);
+    res.json({ id: String(r.insertedId) });
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to create category' }); }
+});
+
+app.patch('/api/admin/categories/:id', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const _id = new ObjectId(String(req.params.id));
+    const set = { updatedAt: new Date() };
+    if('name' in req.body) set.name = String(req.body.name);
+    if('slug' in req.body) set.slug = String(req.body.slug);
+    if('sort_order' in req.body) set.sort_order = Number(req.body.sort_order)||0;
+    const r = await db.collection('categories').updateOne({ _id }, { $set: set });
+    res.json({ ok: r.matchedCount === 1 });
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to update category' }); }
+});
+
+app.delete('/api/admin/categories/:id', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const _id = new ObjectId(String(req.params.id));
+    const r = await db.collection('categories').deleteOne({ _id });
+    res.json({ ok: r.deletedCount === 1 });
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to delete category' }); }
+});
+
+// --- Admin: Users management ---
+app.get('/api/admin/users', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const { q, page = 1, limit = 20 } = req.query || {};
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const offset = (Math.max(parseInt(page, 10) || 1, 1) - 1) * safeLimit;
+    const filter = {};
+    if(q){ filter.$or = [ { email: { $regex: String(q), $options: 'i' } }, { name: { $regex: String(q), $options: 'i' } } ]; }
+    const cursor = db.collection('users').find(filter, { projection: { passwordHash: 0, refreshTokens: 0 } }).sort({ _id: -1 }).skip(offset).limit(safeLimit);
+    const rows = await cursor.toArray();
+    const total = await db.collection('users').countDocuments(filter);
+    res.json({ items: rows.map(r=>({ ...r, _id: String(r._id) })), page: Number(page), limit: safeLimit, total });
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to list users' }); }
+});
+
+app.patch('/api/admin/users/:id', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const _id = new ObjectId(String(req.params.id));
+    const set = { updatedAt: new Date() };
+    if('name' in req.body) set.name = String(req.body.name||'');
+    if('roles' in req.body && Array.isArray(req.body.roles)) set.roles = req.body.roles.map(String);
+    const r = await db.collection('users').updateOne({ _id }, { $set: set });
+    res.json({ ok: r.matchedCount === 1 });
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to update user' }); }
+});
+
+app.delete('/api/admin/users/:id', adminHealthMiddleware, async (req, res) => {
+  try{
+    await connectMongo();
+    const _id = new ObjectId(String(req.params.id));
+    const r = await db.collection('users').deleteOne({ _id });
+    res.json({ ok: r.deletedCount === 1 });
+  }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to delete user' }); }
+});
+
 // Auth context debug helper
 app.get('/api/debug/auth-context', async (req, res) => {
   const out = {
@@ -813,7 +966,10 @@ app.get('/api/auth/google', (req, res) => {
   }
   const state = crypto.randomBytes(16).toString('hex');
   const nonce = crypto.randomBytes(16).toString('hex');
-  req.session.oauthState = { state, nonce, createdAt: Date.now() };
+  // Optional post-login redirect (path on this site). Default handled in callback.
+  let redirect = (req.query && req.query.redirect) ? String(req.query.redirect) : '';
+  if(!redirect || !redirect.startsWith('/') || redirect.startsWith('//')) redirect = '';
+  req.session.oauthState = { state, nonce, redirect, createdAt: Date.now() };
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: GOOGLE_REDIRECT_URI,
@@ -882,13 +1038,18 @@ app.get('/api/auth/google/callback', async (req, res) => {
     await mergeSessionCartIntoUser(req, user._id);
     await mergeSessionWishlistIntoUser(req, user._id);
 
-    // Return a tiny HTML that stores tokens in localStorage and redirects
-    res.set('Content-Type','text/html');
-    const redirectTo = '/index.html';
-    res.send(`<!doctype html><html><body><script>
-      try { localStorage.setItem('accessToken', ${JSON.stringify(at)}); localStorage.setItem('refreshToken', ${JSON.stringify(rt.token)}); } catch(e){}
-      location.replace(${JSON.stringify(redirectTo)});
-    </script></body></html>`);
+    // Return CSP-friendly HTML: deliver payload via meta and load external JS.
+    res.set('Content-Type', 'text/html');
+    const safe = (sess.redirect && sess.redirect.startsWith('/') && !sess.redirect.startsWith('//')) ? sess.redirect : '/index.html';
+    const payload = Buffer.from(JSON.stringify({ accessToken: at, refreshToken: rt.token, redirectTo: safe }), 'utf8').toString('base64');
+    res.send(`<!doctype html><html><head>
+      <meta charset="utf-8" />
+      <meta name="oauth" content="${payload}" />
+      <title>Signing you in…</title>
+    </head><body>
+      <div style="font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;color:#222;padding:24px;">Processing sign-in, please wait…</div>
+      <script src="/assets/js/oauth-finish.js"></script>
+    </body></html>`);
   }catch(err){ console.error(err); res.status(500).send('Google auth failed'); }
 });
 

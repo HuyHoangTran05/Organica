@@ -37,7 +37,32 @@
         + '<button type="button" class="auth-btn auth-logout" style="background:#e74c3c;border:0;color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;">Logout</button>'
       + '</div>';
     const originalLogin = loginAnchor();
-    if(originalLogin){ originalLogin.style.display = 'none'; }
+    if(originalLogin){
+      // Instead of hiding completely (mất icon), turn it into a small profile badge
+      originalLogin.style.display = 'flex';
+      originalLogin.style.alignItems = 'center';
+      originalLogin.style.justifyContent = 'center';
+      originalLogin.style.minWidth = '40px';
+      originalLogin.style.fontSize = '12px';
+      originalLogin.style.fontWeight = '600';
+      originalLogin.style.background = 'var(--emerald,#2ecc71)';
+      originalLogin.style.color = '#fff';
+      originalLogin.style.borderRadius = '50%';
+      originalLogin.setAttribute('title', displayName);
+      // Show first letter fallback if ionicon fails or for clarity
+      const initial = (displayName||'U').charAt(0).toUpperCase();
+      // If it still contains an ion-icon child, leave it; else inject initial.
+      if(!originalLogin.querySelector('ion-icon')){
+        originalLogin.textContent = initial;
+      } else {
+        // Keep icon but add visually hidden initial for a11y
+        const span = document.createElement('span');
+        span.textContent = initial;
+        span.style.position='absolute';
+        span.style.opacity='0';
+        originalLogin.appendChild(span);
+      }
+    }
     const accountBtn = box.querySelector('.auth-account');
     const logoutBtn = box.querySelector('.auth-logout');
     // Prefer Keycloak account page if session cookie exists
@@ -71,40 +96,49 @@
   }
 
   function renderLoggedOut(){
-    const box = ensureWidgetContainer();
-    if(!box) return;
-    box.innerHTML = ''+
-      '<div class="auth-actions" style="display:flex;gap:6px;">'
-        + '<button type="button" class="auth-btn auth-login" style="background:#2ecc71;border:0;color:#fff;font-size:12px;padding:5px 12px;border-radius:18px;cursor:pointer;">Login</button>'
-        + '<button type="button" class="auth-btn auth-signup" style="background:#3498db;border:0;color:#fff;font-size:12px;padding:5px 12px;border-radius:18px;cursor:pointer;">Sign Up</button>'
-      + '</div>';
+    // Giữ nguyên layout gốc: không chèn nhiều nút, chỉ để link login hiện có hoạt động.
     const originalLogin = loginAnchor();
-    if(originalLogin){ originalLogin.style.display = 'none'; }
-    box.querySelector('.auth-login').addEventListener('click', () => {
-      window.location.href = '/api/auth/keycloak-login';
-    });
-    box.querySelector('.auth-signup').addEventListener('click', () => {
-      window.location.href = '/signup.html';
-    });
+    if(originalLogin){
+      // Giữ icon đăng nhập gốc khi chưa đăng nhập
+      originalLogin.href = 'login.html';
+      originalLogin.style.display = 'flex';
+    }
+    // Không tạo widget mới nếu chưa đăng nhập để tránh phá bố cục.
+  }
+
+  async function fetchMeWithBearer(){
+    const at = localStorage.getItem('accessToken');
+    if(!at) return null;
+    try{
+      let r = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + at } });
+      if(r.ok) return await r.json();
+      if(r.status === 401){
+        const rt = localStorage.getItem('refreshToken');
+        if(rt){
+          try{
+            const rr = await fetch('/api/auth/refresh', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ refreshToken: rt }) });
+            if(rr.ok){ const j = await rr.json(); if(j.accessToken){ localStorage.setItem('accessToken', j.accessToken); if(j.refreshToken) localStorage.setItem('refreshToken', j.refreshToken); r = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + j.accessToken } }); if(r.ok) return await r.json(); }
+            }
+          }catch(_e){}
+        }
+      }
+    }catch(_e){}
+    return null;
   }
 
   async function init(){
-    // 1) Try Keycloak cookie session
+    // Prefer JWT (Google/local) first so we don't show 401 in console before success
+    const uJwt = await fetchMeWithBearer();
+    if(uJwt){ renderLoggedIn(uJwt); return; }
+    // Fallback to Keycloak cookie session
     try{
       const r = await fetch('/api/me', { credentials: 'include' });
       if(r.ok){ const u = await r.json(); renderLoggedIn(u); return; }
     }catch(_e){}
-    // 2) Try JWT from localStorage
-    const at = localStorage.getItem('accessToken');
-    if(at){
-      try{
-        const r2 = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + at } });
-        if(r2.ok){ const u2 = await r2.json(); renderLoggedIn(u2); return; }
-      }catch(_e){}
-    }
-    // 3) Logged out
     renderLoggedOut();
   }
 
   init();
+  // Auto update when tokens are added/removed in another tab
+  window.addEventListener('storage', (e)=>{ if(e.key==='accessToken' || e.key==='refreshToken'){ init(); } });
 })();

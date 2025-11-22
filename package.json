@@ -21,6 +21,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.8.0",
+    "mysql2": "^3.9.7",
     "keycloak-connect": "^23.0.7"
   },
   "devDependencies": {

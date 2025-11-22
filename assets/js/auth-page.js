@@ -29,8 +29,8 @@ async function handleSignup(e){
   try{
     const r = await postJson(apiBase + '/api/auth/signup', { name, email, password, role, adminCode });
     saveTokens(r);
-    setStatus('Tạo tài khoản thành công! Chuyển về trang chủ...');
-    setTimeout(()=>{ window.location.href = 'index.html'; }, 800);
+    setStatus('Tạo tài khoản thành công! Chuyển sang trang quản trị...');
+    setTimeout(()=>{ window.location.href = 'admin.html'; }, 500);
   }catch(err){ setStatus(err.message, true); }
 }
 
@@ -42,8 +42,8 @@ async function handleLogin(e){
   try{
     const r = await postJson(apiBase + '/api/auth/login', { email, password });
     saveTokens(r);
-    setStatus('Đăng nhập thành công! Chuyển về trang chủ...');
-    setTimeout(()=>{ window.location.href = 'index.html'; }, 800);
+    setStatus('Đăng nhập thành công! Chuyển sang trang quản trị...');
+    setTimeout(()=>{ window.location.href = 'admin.html'; }, 500);
   }catch(err){ setStatus(err.message, true); }
 }
 
@@ -83,3 +83,15 @@ function bindTabs(){
 }
 
 window.addEventListener('DOMContentLoaded', bindTabs);
+
+// Always use legacy Google OAuth endpoint for reliability.
+// If you later want Keycloak Google IdP, we can re-enable it.
+window.addEventListener('DOMContentLoaded', function(){
+  const btn = document.getElementById('btn-google');
+  if(!btn) return;
+  btn.addEventListener('click', function(e){
+    e.preventDefault();
+    // After Google login, go back to home so header shows your account
+    window.location.href = '/api/auth/google?redirect=' + encodeURIComponent('/index.html');
+  });
+});

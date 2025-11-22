@@ -1,0 +1,18 @@
+.admin-tabs{display:flex;gap:8px;margin:12px 0 18px}
+.admin-tab{padding:8px 14px;border-radius:20px;border:1px solid #e6e6e6;background:#fff;cursor:pointer}
+.admin-tab.active{background:#2ecc71;border-color:#2ecc71;color:#fff}
+.admin-panel{display:none}
+.admin-panel.active{display:block}
+.admin-grid{display:grid;grid-template-columns:320px 1fr;gap:16px}
+.card{background:#fff;border:1px solid #eee;border-radius:8px;padding:16px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.card input, .card select{width:100%;margin:6px 0 10px;padding:8px 10px;border:1px solid #e5e5e5;border-radius:6px}
+.small{font-size:12px;color:#666;margin-top:6px}
+.table-wrap{overflow:auto}
+.admin-table{width:100%;border-collapse:collapse}
+.admin-table th, .admin-table td{border-bottom:1px solid #efefef;padding:8px 10px;text-align:left}
+.admin-table tr:hover{background:#fafafa}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid #ddd;padding:6px 12px;border-radius:18px;background:#fff;cursor:pointer}
+.btn-danger{background:#e74c3c;color:#fff;border-color:#e74c3c}
+.btn-secondary{background:#3498db;color:#fff;border-color:#3498db}
+@media (max-width: 920px){.admin-grid{grid-template-columns:1fr}}
