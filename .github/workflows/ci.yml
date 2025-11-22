@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:6
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd="mongosh --quiet --eval 'db.runCommand({ ping: 1 })'" 
+          --health-interval=10s --health-timeout=5s --health-retries=5
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (if script exists)
+        run: |
+          if npm run -s | grep -q '^lint'; then
+            echo "Running lint...";
+            npm run lint || exit 1;
+          else
+            echo "No lint script defined";
+          fi
+
+      - name: Seed Mongo (optional) 
+        env:
+          MONGO_URL: mongodb://localhost:27017
+          MONGO_DB_NAME: organica_ci
+        run: |
+          if [ -f db/mongo-seed.js ]; then
+            node db/mongo-seed.js || echo "Seed script failed (non-fatal)";
+          else
+            echo "No seed script";
+          fi
+
+      - name: Test (if script exists)
+        env:
+          MONGO_URL: mongodb://localhost:27017
+          MONGO_DB_NAME: organica_ci
+        run: |
+          if npm run -s | grep -q '^test'; then
+            echo "Running tests...";
+            npm test;
+          else
+            echo "No test script defined";
+          fi
+
+      - name: Build (if script exists)
+        run: |
+          if npm run -s | grep -q '^build'; then
+            echo "Running build...";
+            npm run build;
+          else
+            echo "No build script defined";
+          fi
+
+      - name: Basic Server Smoke (non-blocking)
+        env:
+          PORT: 3000
+          MONGO_URL: mongodb://localhost:27017
+          MONGO_DB_NAME: organica_ci
+        run: |
+          if [ -f server.js ]; then
+            echo "Starting server briefly";
+            (node server.js & echo $! > server.pid);
+            sleep 8;
+            curl -s localhost:3000/api/health || echo "Health check failed";
+            kill $(cat server.pid) || true;
+          else
+            echo "No server.js found";
+          fi
+
+      - name: Upload Artifacts (logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-${{ matrix.node-version }}
+          path: |
+            server.pid
+          if-no-files-found: ignore
+
+  security-advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Minimal dependency audit
+        run: |
+          npm ci
+          if npm audit --json > audit.json 2>/dev/null; then
+            echo "Audit complete";
+          else
+            echo "npm audit failed or not supported";
+          fi
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: audit.json
+          if-no-files-found: ignore
