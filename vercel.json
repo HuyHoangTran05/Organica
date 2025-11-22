@@ -1,4 +1,12 @@
 {
+  "functions": {
+    "api/index.js": {
+      "includeFiles": [
+        "assets/**",
+        "*.html"
+      ]
+    }
+  },
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/index.js" },
     { "source": "/assets/:path*", "destination": "/api/index.js" },
