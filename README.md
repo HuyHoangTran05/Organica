@@ -110,3 +110,103 @@ On first start with these set, an admin user is created. Remove the vars afterwa
 
 - Cart/Wishlist: when logged in, data is stored per user; guest users continue to use session storage. On login/signup, the guest session is merged into the user account.
 
+## Deployment (Vercel)
+
+This project can be deployed to Vercel with zero build step (pure static + one Node serverless function for the API).
+
+### Minimal Setup
+
+1. Connect the GitHub repository in Vercel.
+2. Framework preset: "Other". Leave build command empty.
+3. Root directory: project root (where `index.html` lives).
+4. Environment Variables (add in Vercel dashboard):
+  - `MONGO_URL` = your Atlas connection string
+  - `MONGO_DB_NAME` (optional, defaults to `organica`)
+  - `ADMIN_EMAIL` / `ADMIN_PASSWORD` for first‑run admin bootstrap (optional, remove after first deployment)
+5. Redeploy.
+
+Static files (HTML, CSS, images, JS) are served automatically. The API is exposed via a single rewrite pointing `/api/*` to `api/index.js` (see `vercel.json`).
+
+If you ever see missing CSS/images on Vercel:
+  - Ensure `vercel.json` does NOT contain a catch‑all route sending everything to `index.html`.
+  - Current working file uses only a rewrite for `/api/*` so assets resolve correctly.
+  - Paths in HTML should be relative: `assets/css/main.css`, not an absolute external URL.
+
+### Clean URLs (Optional)
+You can add `"cleanUrls": true` to `vercel.json` if you want `/about` instead of `/about.html`.
+
+### Local vs Vercel Differences
+- Local Express serves static + API directly.
+- Vercel serves static through the CDN layer; only `/api/*` hits the serverless function.
+
+## Quick API Usage (curl)
+
+Below examples assume the deployment base URL is stored in `$BASE` (PowerShell):
+
+```powershell
+$BASE="https://your-vercel-domain" # adjust
+```
+
+### Signup & Login
+```powershell
+curl -X POST "$BASE/api/auth/signup" -H "Content-Type: application/json" -d '{"name":"Test User","email":"test@example.com","password":"Secret123!"}'
+curl -X POST "$BASE/api/auth/login" -H "Content-Type: application/json" -d '{"email":"test@example.com","password":"Secret123!"}'
+```
+Capture `accessToken` and `refreshToken` from responses.
+
+### /api/me
+```powershell
+$token = "<ACCESS_TOKEN>"
+curl -H "Authorization: Bearer $token" "$BASE/api/me"
+```
+
+### Refresh Token
+```powershell
+curl -X POST "$BASE/api/auth/refresh" -H "Content-Type: application/json" -d '{"refreshToken":"<REFRESH_TOKEN>"}'
+```
+
+### Admin Health (requires admin accessToken)
+```powershell
+curl -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>" "$BASE/api/admin/health"
+```
+
+### Products (Public list)
+```powershell
+curl "$BASE/api/products"
+```
+
+### Create Product (Admin)
+```powershell
+curl -X POST "$BASE/api/admin/products" -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>" -H "Content-Type: application/json" -d '{"name":"Sample","slug":"sample","price":9.99,"categorySlug":"fresh-vegetables","image":"top-product-1.png"}'
+```
+
+### Update Product (Admin)
+```powershell
+curl -X PUT "$BASE/api/admin/products/<PRODUCT_ID>" -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>" -H "Content-Type: application/json" -d '{"price":10.49}'
+```
+
+### Delete Product (Admin)
+```powershell
+curl -X DELETE "$BASE/api/admin/products/<PRODUCT_ID>" -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>"
+```
+
+### Logout
+```powershell
+curl -X POST "$BASE/api/auth/logout" -H "Content-Type: application/json" -d '{"refreshToken":"<REFRESH_TOKEN>"}'
+```
+
+### Health Check
+```powershell
+curl "$BASE/api/health"
+```
+
+## Troubleshooting
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Unstyled page on Vercel | Catch‑all route sending assets to `index.html` | Use only rewrite for `/api/*` |
+| 404 for images | Wrong path or file name | Verify `assets/images/<file>` exists & case matches |
+| API 500 on first deploy | Missing `MONGO_URL` | Add env var & redeploy |
+| Admin endpoints unauthorized | Not admin token | Ensure admin user created with env vars on first run |
+
+
