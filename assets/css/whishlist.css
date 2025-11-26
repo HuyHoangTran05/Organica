@@ -1,0 +1,15 @@
+/* Wishlist page tweaks */
+.wishlist { padding-block: 60px; }
+.wishlist .section-title { margin-block-end: 20px; }
+
+.wishlist-list { display: grid; gap: 16px; }
+.wishlist-item { display: grid; grid-template-columns: 90px 1fr auto; gap: 16px; align-items: center; border: 1px solid var(--cultured); border-radius: 8px; padding: 12px; background: var(--white); }
+.wishlist-item .item-title a { color: var(--eerie-black); }
+.wishlist-item .item-price { color: var(--salmon-pink); font-weight: 700; }
+.wishlist-item .item-actions { display: flex; align-items: center; gap: 10px; }
+.wishlist-item .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--cultured); border-radius: 50%; background: var(--white); color: var(--eerie-black); }
+
+@media (max-width: 480px){
+	.wishlist-item { grid-template-columns: 70px 1fr; }
+	.wishlist-item .item-actions { grid-column: 1 / -1; }
+}

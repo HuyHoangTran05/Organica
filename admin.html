@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Organica • Admin</title>
+  <link rel="stylesheet" href="./assets/css/main.css" />
+  <link rel="stylesheet" href="./assets/css/admin.css" />
+</head>
+<body>
+  <header class="header" data-header>
+    <div class="top-bar"><div class="container"><p>Admin Console</p></div></div>
+    <div class="nav-wrapper">
+      <div class="container">
+        <h1 class="h1"><a class="logo" href="./index.html">Organ<span class="span">ica</span></a></h1>
+        <nav class="navbar" data-navbar>
+          <ul class="navbar-list">
+            <li><a href="./index.html" class="navbar-link">Home</a></li>
+            <li><a href="#" class="navbar-link active">Admin</a></li>
+          </ul>
+        </nav>
+        <div class="header-action">
+          <a class="header-action-btn" aria-label="Login" href="./login.html"><ion-icon name="person-outline"></ion-icon></a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="section" style="padding-top:40px;">
+    <div class="container">
+      <h2 class="h2 section-title">Admin Dashboard</h2>
+      <p id="admin-status" class="section-subtitle">Loading…</p>
+
+      <div class="admin-tabs">
+        <button class="admin-tab active" data-tab="products">Products</button>
+        <button class="admin-tab" data-tab="categories">Categories</button>
+        <button class="admin-tab" data-tab="users">Users</button>
+      </div>
+
+      <section id="tab-products" class="admin-panel active">
+        <div class="admin-grid">
+          <form id="form-product" class="card">
+            <h3 class="h3">Add Product</h3>
+            <label>Name<input name="name" required /></label>
+            <label>Slug<input name="slug" required /></label>
+            <label>Price<input name="price" type="number" step="0.01" value="0" /></label>
+            <label>Compare At<input name="compareAt" type="number" step="0.01" /></label>
+            <label>Image URL<input name="image" /></label>
+            <label>Category Slug<input name="categorySlug" /></label>
+            <button class="btn btn-primary" type="submit">Create</button>
+            <div class="small" id="product-form-status"></div>
+          </form>
+          <div class="card">
+            <div class="card-header">
+              <h3 class="h3">Products</h3>
+              <div>
+                <input id="search-products" placeholder="Search name/slug" />
+                <button class="btn" id="btn-reload-products">Reload</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table" id="table-products"><thead>
+                <tr><th>Name</th><th>Slug</th><th>Category</th><th>Price</th><th>Compare At</th><th>Status</th><th>Image</th><th>Actions</th></tr>
+              </thead><tbody></tbody></table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-categories" class="admin-panel">
+        <div class="admin-grid">
+          <form id="form-category" class="card">
+            <h3 class="h3">Add Category</h3>
+            <label>Name<input name="name" required /></label>
+            <label>Slug<input name="slug" required /></label>
+            <label>Sort Order<input name="sort_order" type="number" value="0" /></label>
+            <button class="btn btn-primary" type="submit">Create</button>
+            <div class="small" id="category-form-status"></div>
+          </form>
+          <div class="card">
+            <div class="card-header">
+              <h3 class="h3">Categories</h3>
+              <div>
+                <input id="search-categories" placeholder="Search" />
+                <button class="btn" id="btn-reload-categories">Reload</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table" id="table-categories"><thead>
+                <tr><th>Name</th><th>Slug</th><th>Order</th><th>Actions</th></tr>
+              </thead><tbody></tbody></table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-users" class="admin-panel">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="h3">Users</h3>
+            <div>
+              <input id="search-users" placeholder="Search email/name" />
+              <button class="btn" id="btn-reload-users">Reload</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="admin-table" id="table-users"><thead>
+              <tr><th>Email</th><th>Name</th><th>Roles</th><th>Actions</th></tr>
+            </thead><tbody></tbody></table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="./assets/js/admin.js"></script>
+  <script src="./assets/js/keycloak-helper.js"></script>
+  <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+  <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+/*-----------------------------------*\
+	#404.css
+\*-----------------------------------*/
+
+.not-found { text-align: center; }
+
+.nf-text {
+	color: var(--roman-silver);
+	font-size: var(--fs-4);
+	line-height: 1.8;
+	max-width: 70ch;
+	margin: 10px auto 20px;
+}
+

@@ -1,0 +1,16 @@
+/* Contact page tweaks */
+.contact { padding-block: 60px; }
+.contact .section-title { margin-block-end: 20px; }
+
+.contact-grid { display: grid; gap: 30px; }
+@media (min-width: 992px){ .contact-grid { grid-template-columns: 1fr 1.2fr; align-items: start; } }
+
+.contact-info .contact-list { display: grid; gap: 12px; margin-block-start: 10px; }
+.contact-info li { display: flex; align-items: center; gap: 10px; color: var(--davys-gray); }
+.contact-info a { color: inherit; }
+
+.contact-form label { display: block; font-weight: 500; margin-block: 10px 6px; }
+.contact-form input, .contact-form textarea { width: 100%; border: 1px solid var(--cultured); padding: 12px 14px; border-radius: 6px; background: var(--white); color: var(--eerie-black); }
+.contact-form .grid-2 { display: grid; gap: 16px; }
+@media (min-width: 576px){ .contact-form .grid-2 { grid-template-columns: 1fr 1fr; } }
+.contact-form .btn { margin-block-start: 10px; }

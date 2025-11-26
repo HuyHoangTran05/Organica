@@ -1,0 +1,18 @@
+/* Checkout page tweaks */
+.checkout { padding-block: 60px; }
+.checkout .section-title { margin-block-end: 20px; }
+
+.checkout-grid { display: grid; gap: 30px; }
+@media (min-width: 992px){
+	.checkout-grid { grid-template-columns: 1.5fr 1fr; align-items: start; }
+}
+
+.checkout-form label { display: block; font-weight: 500; margin-block: 10px 6px; }
+.checkout-form input { width: 100%; border: 1px solid var(--cultured); padding: 12px 14px; border-radius: 6px; background: var(--white); color: var(--eerie-black); }
+.checkout-form .grid-2 { display: grid; gap: 16px; }
+@media (min-width: 576px){ .checkout-form .grid-2 { grid-template-columns: 1fr 1fr; } }
+
+.order-summary { border: 1px solid var(--cultured); border-radius: 8px; padding: 20px; background: var(--white); }
+.order-summary .sum-list { display: grid; gap: 12px; margin-block: 16px; }
+.order-summary .sum-list li { display: flex; justify-content: space-between; align-items: center; }
+.order-summary .btn { width: 100%; justify-content: center; }

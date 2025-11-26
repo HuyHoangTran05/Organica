@@ -1,0 +1,32 @@
+/*-----------------------------------*\
+	#cart.css
+\*-----------------------------------*/
+
+.cart-grid {
+	display: grid;
+	gap: 20px;
+}
+
+.cart-item {
+	display: grid;
+	grid-template-columns: 70px 1fr auto auto;
+	align-items: center;
+	gap: 12px;
+	padding: 12px;
+	background-color: var(--mint-cream);
+}
+
+.ci-info .ci-title { color: var(--russian-violet); font-weight: var(--fw-500); }
+.ci-info .ci-price { color: var(--emerald); }
+
+.ci-qty { display: inline-flex; align-items: center; gap: 8px; }
+.ci-qty input { width: 56px; padding: 6px 8px; border: 1px solid var(--platinum); }
+
+.cart-summary { background-color: var(--mint-cream); padding: 16px; }
+.sum-list { display: grid; gap: 10px; }
+.sum-list li { display: flex; justify-content: space-between; }
+
+@media (min-width: 992px) {
+	.cart-grid { grid-template-columns: 2fr 1fr; }
+}
+

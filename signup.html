@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Sign Up - Organica</title>
+  <link rel="stylesheet" href="./assets/css/main.css" />
+  <style>
+    body{font-family:Roboto,Arial,sans-serif;background:#f5f7f8;margin:0;}
+    .signup-wrapper{max-width:420px;margin:60px auto;background:#fff;padding:32px 36px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.08);} 
+    h1{font-size:26px;margin:0 0 8px;font-weight:600;text-align:center;}
+    p.subtitle{text-align:center;color:#555;margin:0 0 24px;font-size:14px;}
+    form label{display:block;font-size:12px;font-weight:600;margin:16px 0 6px;text-transform:uppercase;letter-spacing:.5px;color:#444;}
+    form input, form select{width:100%;padding:10px 12px;border:1px solid #d0d7de;border-radius:6px;font-size:14px;background:#fff;}
+    form input:focus{outline:2px solid #2ecc71;border-color:#2ecc71;}
+    .role-row{display:flex;gap:12px;}
+    .actions{margin-top:28px;display:flex;flex-direction:column;gap:12px;}
+    button.primary{background:#2ecc71;color:#fff;border:0;padding:12px 18px;font-size:15px;font-weight:600;border-radius:30px;cursor:pointer;}
+    button.primary:hover{background:#27ae60;}
+    .note{font-size:12px;color:#777;margin-top:4px;}
+    .error{background:#e74c3c;color:#fff;padding:10px 14px;border-radius:6px;font-size:13px;display:none;}
+    .success{background:#2ecc71;color:#fff;padding:10px 14px;border-radius:6px;font-size:13px;display:none;}
+    .toast{position:fixed;left:50%;top:24px;transform:translateX(-50%);background:#2ecc71;color:#fff;padding:12px 16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);font-weight:600;display:none;z-index:1000;}
+    .toast.show{display:block;}
+    a.back{display:inline-block;margin-top:20px;font-size:13px;color:#3498db;text-decoration:none;}
+  </style>
+</head>
+<body>
+  <div class="signup-wrapper">
+    <h1>Create Account</h1>
+    <p class="subtitle">Use email/password for local account. Admin requires code.</p>
+    <div class="error" id="errorBox"></div>
+    <div class="success" id="successBox"></div>
+    <form id="signupForm" autocomplete="off">
+      <label for="name">Name</label>
+      <input id="name" name="name" type="text" placeholder="Your full name" />
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" placeholder="you@example.com" required />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" placeholder="Min 8 chars incl. number" required />
+      <div id="passwordHint" style="font-size:11px;color:#888;margin-top:4px;line-height:1.4;">
+        <span data-pw-len style="color:#e74c3c;">✗ ≥8 ký tự</span> ·
+        <span data-pw-letter style="color:#e74c3c;">✗ chữ cái</span> ·
+        <span data-pw-digit style="color:#e74c3c;">✗ số</span>
+      </div>
+      <label for="confirm">Confirm Password</label>
+      <input id="confirm" name="confirm" type="password" required />
+      <div class="role-row">
+        <div style="flex:1;">
+          <label for="role">Role</label>
+          <select id="role" name="role">
+            <option value="user" selected>User</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div style="flex:1;">
+          <label for="adminCode">Admin Code</label>
+          <input id="adminCode" name="adminCode" type="text" placeholder="If admin" />
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" class="primary">Sign Up</button>
+      </div>
+      <div class="note">Password must be at least 8 characters and include letters & numbers.</div>
+    </form>
+    <a class="back" href="/index.html">← Back to Home</a>
+  </div>
+  <div class="toast" id="toast">Account created</div>
+  <script src="./assets/js/signup.js" defer></script>
+</body>
+</html>
