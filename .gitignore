@@ -7,14 +7,9 @@ npm-debug.log*
 .env.local
 .env.*.local
 
-<<<<<<< HEAD
-# Logs
-logs
-=======
 # Logs (Đã sửa để cho phép tracking thư mục rỗng)
 logs/
 !logs/.gitkeep
->>>>>>> nam
 *.log
 *.log.*
 

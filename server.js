@@ -1,7 +1,5 @@
 // Minimal Express API to serve products from MongoDB and static site files
 require('dotenv').config();
-<<<<<<< HEAD
-=======
 const client = require('prom-client'); // Thêm cho Metrics
 const winston = require('winston');   // Thêm cho Logging
 const { GoogleGenerativeAI } = require('@google/generative-ai'); // Thêm cho Chatbot
@@ -43,7 +41,6 @@ const httpRequestDurationMicroseconds = new client.Histogram({
 register.registerMetric(httpRequestDurationMicroseconds);
 
 // TIẾP THEO LÀ const express = require('express'); VÀ CÁC LỆNH KHÁC
->>>>>>> nam
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -58,11 +55,6 @@ const crypto = require('crypto');
 const { MongoClient, ObjectId } = require('mongodb');
 
 const app = express();
-<<<<<<< HEAD
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
-=======
 app.use(helmet({
   contentSecurityPolicy: false,
 }));
@@ -79,7 +71,6 @@ app.use((req, res, next) => {
   });
   next();
 });
->>>>>>> nam
 // Use explicit MemoryStore so Keycloak can hook into the same session store
 const memoryStore = new session.MemoryStore();
 app.use(session({
@@ -117,15 +108,7 @@ let mongoClient;
 let db;
 
 async function connectMongo(){
-<<<<<<< HEAD
   if(db) return db;
-  mongoClient = new MongoClient(MONGO_URL);
-  await mongoClient.connect();
-  db = mongoClient.db(DB_NAME);
-  return db;
-}
-=======
-  if(db) return db;
   mongoClient = new MongoClient(MONGO_URL);
   try {
     await mongoClient.connect();
@@ -136,7 +119,6 @@ async function connectMongo(){
     throw e;
   }
 } 
->>>>>>> nam
 
 // --- Auth configuration ---
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-access-secret-change';
@@ -1129,9 +1111,6 @@ app.get('/api/auth/google/callback', async (req, res) => {
     </body></html>`);
   }catch(err){ console.error(err); res.status(500).send('Google auth failed'); }
 });
-<<<<<<< HEAD
-
-=======
 app.post('/api/chat', async (req, res) => {
   try {
     const { message } = req.body;
@@ -1181,7 +1160,6 @@ app.get('/api/metrics', async (req, res) => {
     res.set('Content-Type', register.contentType);
     res.end(await register.metrics());
 });
->>>>>>> nam
 // HEALTH CHECK
 app.get('/api/health', async (_req, res) => {
   try {
@@ -1344,5 +1322,4 @@ if(!process.env.VERCEL){
   // Cần sửa console.error trong khối này nếu bạn muốn deploy lên Vercel
   setupIndexesAndAdmin().catch(e=>logger.error('Setup error (serverless):', e.message));
   module.exports = app;
->>>>>>> nam
 }
