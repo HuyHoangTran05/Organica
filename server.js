@@ -1244,40 +1244,6 @@ app.get('/', (req, res) => {
 const port = process.env.PORT || 3000;
 
 async function setupIndexesAndAdmin(){
-<<<<<<< HEAD
-  await connectMongo();
-  await db.collection('users').createIndex({ email: 1 }, { unique: true });
-  try { await db.collection('users').createIndex({ keycloakId: 1 }, { unique: true, sparse: true }); } catch(e){ console.error('Index keycloakId error', e.message); }
-  await db.collection('userCarts').createIndex({ userId: 1 }, { unique: true });
-  await db.collection('userWishlists').createIndex({ userId: 1 }, { unique: true });
-  const adminEmail = process.env.ADMIN_EMAIL && normalizeEmail(process.env.ADMIN_EMAIL);
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if(adminEmail && adminPassword){
-    const existing = await db.collection('users').findOne({ email: adminEmail });
-    if(!existing){
-      const passwordHash = await hashPassword(adminPassword);
-      await db.collection('users').insertOne({ email: adminEmail, name: 'Admin', passwordHash, roles: ['admin'], createdAt: new Date(), updatedAt: new Date(), refreshTokens: [] });
-      console.log('Admin user created for', adminEmail);
-    }
-  }
-}
-
-if(!process.env.VERCEL){
-  // Local mode: start server normally
-  setupIndexesAndAdmin().then(()=>{
-    app.listen(port, () => {
-      console.log(`Organica server running at http://localhost:${port}`);
-      if (keycloak) {
-        console.log('Keycloak realm:', process.env.KEYCLOAK_REALM, 'client:', process.env.KEYCLOAK_CLIENT_ID);
-        console.log('Login URL (Keycloak):', `${process.env.KEYCLOAK_BASE_URL}realms/${process.env.KEYCLOAK_REALM}/protocol/openid-connect/auth`);
-      }
-    });
-  }).catch(err=>{ console.error('Failed to start server', err); process.exit(1); });
-} else {
-  // Vercel serverless: prepare indexes eagerly (non-blocking for cold start)
-  setupIndexesAndAdmin().catch(e=>console.error('Setup error (serverless):', e.message));
-  module.exports = app;
-=======
   await connectMongo();
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
   try { 
