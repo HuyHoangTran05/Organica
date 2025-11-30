@@ -48,17 +48,46 @@ app.use(express.static(publicDir));
 
 // MongoDB client
 // Mongo config: allow a dedicated MONGO_DB_NAME to avoid confusion with MySQL DB_NAME
-const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
+const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017' || 'mongodb+srv://manhndvinhyen_db_user:ZO0ZVeYBdzI6ehse@organica.b3ugidw.mongodb.net/organica?retryWrites=true&w=majority';
 const DB_NAME = process.env.MONGO_DB_NAME || process.env.DB_NAME || 'organica';
 let mongoClient;
 let db;
 
 async function connectMongo(){
   if(db) return db;
-  mongoClient = new MongoClient(MONGO_URL);
-  await mongoClient.connect();
-  db = mongoClient.db(DB_NAME);
-  return db;
+  const maxAttempts = parseInt(process.env.MONGO_CONNECT_MAX_ATTEMPTS || '5', 10);
+  const baseDelay = parseInt(process.env.MONGO_CONNECT_BASE_DELAY_MS || '1000', 10);
+  let attempt = 0;
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    try {
+      mongoClient = new MongoClient(MONGO_URL, { useNewUrlParser: true, useUnifiedTopology: true });
+      await mongoClient.connect();
+      db = mongoClient.db(DB_NAME);
+      console.log(`Connected to MongoDB (attempt ${attempt})`);
+      return db;
+    } catch (err) {
+      console.error(`MongoDB connection attempt ${attempt} failed:`, err && err.message ? err.message : err);
+      try {
+        // close client if partially opened
+        if (mongoClient && mongoClient.close) await mongoClient.close();
+      } catch(_){/* ignore */}
+      const delay = Math.min(30000, baseDelay * Math.pow(2, attempt - 1));
+      console.log(`Retrying MongoDB connection in ${delay}ms...`);
+      await new Promise(res => setTimeout(res, delay));
+    }
+  }
+  // Final attempt outside loop to give one last try and throw if it fails
+  try {
+    mongoClient = new MongoClient(MONGO_URL, { useNewUrlParser: true, useUnifiedTopology: true });
+    await mongoClient.connect();
+    db = mongoClient.db(DB_NAME);
+    console.log('Connected to MongoDB (final attempt)');
+    return db;
+  } catch (err) {
+    console.error('MongoDB final connection attempt failed:', err && err.stack ? err.stack : err);
+    throw err;
+  }
 }
 
 // --- Auth configuration ---
@@ -94,7 +123,7 @@ function generateRefreshToken(user){
   const tokenHash = crypto.createHash('sha256').update(token + REFRESH_TOKEN_PEPPER).digest('hex');
   const now = new Date();
   const expiresAt = new Date(now.getTime() + REFRESH_TOKEN_TTL_SEC * 1000);
-  return { token, tokenHash, jti, createdAt: now, expiresAt };
+  return { token, tokenHash, jti, createdAt: now, expiresAt: expiresAt };
 }
 
 async function saveRefreshToken(userId, tokenRecord){
@@ -1112,7 +1141,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8080; // Sử dụng PORT từ biến môi trường
 
 async function setupIndexesAndAdmin(){
   await connectMongo();
@@ -1132,19 +1161,48 @@ async function setupIndexesAndAdmin(){
   }
 }
 
-if(!process.env.VERCEL){
-  // Local mode: start server normally
-  setupIndexesAndAdmin().then(()=>{
-    app.listen(port, () => {
-      console.log(`Organica server running at http://localhost:${port}`);
-      if (keycloak) {
-        console.log('Keycloak realm:', process.env.KEYCLOAK_REALM, 'client:', process.env.KEYCLOAK_CLIENT_ID);
-        console.log('Login URL (Keycloak):', `${process.env.KEYCLOAK_BASE_URL}realms/${process.env.KEYCLOAK_REALM}/protocol/openid-connect/auth`);
+if (!process.env.VERCEL) {
+  // Local / Container mode: start server immediately so container binds TCP port for health checks.
+  // Run DB/index setup asynchronously so startup does not block the process.
+  const server = app.listen(port, () => {
+    console.log(`Organica server running at http://localhost:${port}`);
+  });
+
+  // Perform DB setup in background. Log errors but do not exit the process so
+  // the container remains alive and passes Cloud Run startup probe.
+  setupIndexesAndAdmin().then(() => {
+    console.log('DB indexes and admin user ready');
+  }).catch(err => {
+    console.error('SetupIndexesAndAdmin failed (will continue running):', err && err.stack ? err.stack : err);
+  });
+
+  // Graceful shutdown: close HTTP server and Mongo client on SIGTERM/SIGINT
+  async function gracefulShutdown(signal) {
+    console.log(`Received ${signal}, shutting down gracefully...`);
+    try {
+      if (server) {
+        await new Promise(resolve => server.close(resolve));
+        console.log('HTTP server closed');
       }
-    });
-  }).catch(err=>{ console.error('Failed to start server', err); process.exit(1); });
+    } catch (e) {
+      console.error('Error closing HTTP server', e && e.stack ? e.stack : e);
+    }
+    try {
+      if (mongoClient && mongoClient.close) {
+        await mongoClient.close();
+        console.log('Mongo client closed');
+      }
+    } catch (e) {
+      console.error('Error closing Mongo client', e && e.stack ? e.stack : e);
+    }
+    process.exit(0);
+  }
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 } else {
   // Vercel serverless: prepare indexes eagerly (non-blocking for cold start)
-  setupIndexesAndAdmin().catch(e=>console.error('Setup error (serverless):', e.message));
+  setupIndexesAndAdmin().catch(e => console.error('Setup error (serverless):', e && e.message ? e.message : e));
   module.exports = app;
 }
