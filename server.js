@@ -1,5 +1,46 @@
 // Minimal Express API to serve products from MongoDB and static site files
 require('dotenv').config();
+const client = require('prom-client'); // Thêm cho Metrics
+const winston = require('winston');   // Thêm cho Logging
+const { GoogleGenerativeAI } = require('@google/generative-ai'); // Thêm cho Chatbot
+
+// Minimal Express API to serve products from MongoDB and static site files
+require('dotenv').config();
+
+// ===========================================
+// MONITORING: KHỞI TẠO LOGGER VÀ METRICS
+// ===========================================
+
+// Cấu hình Logger (Winston)
+const logger = winston.createLogger({
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json() 
+  ),
+  transports: [
+    new winston.transports.Console(), 
+    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'logs/combined.log' }),
+  ],
+});
+
+// Cấu hình Prometheus Metrics Registry
+const register = new client.Registry();
+register.setDefaultLabels({ app: 'organica-server' });
+client.collectDefaultMetrics({ register });
+
+// Định nghĩa Metric: request_duration_seconds
+const httpRequestDurationMicroseconds = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'Duration of HTTP requests in seconds',
+  labelNames: ['method', 'route', 'code'],
+  registers: [register],
+  buckets: [0.05, 0.1, 0.2, 0.5, 1, 2, 5] 
+});
+register.registerMetric(httpRequestDurationMicroseconds);
+
+// TIẾP THEO LÀ const express = require('express'); VÀ CÁC LỆNH KHÁC
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -14,9 +55,22 @@ const crypto = require('crypto');
 const { MongoClient, ObjectId } = require('mongodb');
 
 const app = express();
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false,
+}));
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+  const end = httpRequestDurationMicroseconds.startTimer();
+  res.on('finish', () => {
+    end({ 
+      method: req.method, 
+      route: req.route ? req.route.path : req.path,
+      code: res.statusCode 
+    });
+  });
+  next();
+});
 // Use explicit MemoryStore so Keycloak can hook into the same session store
 const memoryStore = new session.MemoryStore();
 app.use(session({
@@ -55,40 +109,16 @@ let db;
 
 async function connectMongo(){
   if(db) return db;
-  const maxAttempts = parseInt(process.env.MONGO_CONNECT_MAX_ATTEMPTS || '5', 10);
-  const baseDelay = parseInt(process.env.MONGO_CONNECT_BASE_DELAY_MS || '1000', 10);
-  let attempt = 0;
-  while (attempt < maxAttempts) {
-    attempt += 1;
-    try {
-      mongoClient = new MongoClient(MONGO_URL, { useNewUrlParser: true, useUnifiedTopology: true });
-      await mongoClient.connect();
-      db = mongoClient.db(DB_NAME);
-      console.log(`Connected to MongoDB (attempt ${attempt})`);
-      return db;
-    } catch (err) {
-      console.error(`MongoDB connection attempt ${attempt} failed:`, err && err.message ? err.message : err);
-      try {
-        // close client if partially opened
-        if (mongoClient && mongoClient.close) await mongoClient.close();
-      } catch(_){/* ignore */}
-      const delay = Math.min(30000, baseDelay * Math.pow(2, attempt - 1));
-      console.log(`Retrying MongoDB connection in ${delay}ms...`);
-      await new Promise(res => setTimeout(res, delay));
-    }
-  }
-  // Final attempt outside loop to give one last try and throw if it fails
+  mongoClient = new MongoClient(MONGO_URL);
   try {
-    mongoClient = new MongoClient(MONGO_URL, { useNewUrlParser: true, useUnifiedTopology: true });
-    await mongoClient.connect();
-    db = mongoClient.db(DB_NAME);
-    console.log('Connected to MongoDB (final attempt)');
-    return db;
-  } catch (err) {
-    console.error('MongoDB final connection attempt failed:', err && err.stack ? err.stack : err);
-    throw err;
+    await mongoClient.connect();
+    db = mongoClient.db(DB_NAME);
+    return db;
+  } catch (e) {
+    logger.error('MongoDB connection failed!', e); 
+    throw e;
   }
-}
+} 
 
 // --- Auth configuration ---
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-access-secret-change';
@@ -1081,7 +1111,55 @@ app.get('/api/auth/google/callback', async (req, res) => {
     </body></html>`);
   }catch(err){ console.error(err); res.status(500).send('Google auth failed'); }
 });
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'Message required' });
 
+    // Lấy danh sách sản phẩm từ DB để Gemini biết mình đang bán gì
+    await connectMongo();
+    const products = await db.collection('products').find({ status: 'active' }).toArray();
+    
+    // Tạo ngữ cảnh (Context) sản phẩm cho AI
+    const productListText = products.map(p => 
+      `- Tên: ${p.name}, Giá: $${p.price}, Danh mục: ${p.categorySlug}`
+    ).join('\n');
+
+    // Cấu hình AI
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'YOUR_API_KEY_HERE');
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash"});
+
+    const prompt = `
+      Bạn là trợ lý ảo AI của cửa hàng thực phẩm sạch Organica.
+      Dưới đây là danh sách sản phẩm cửa hàng đang bán:
+      ${productListText}
+
+      Quy tắc trả lời:
+      1. Chỉ tư vấn dựa trên danh sách sản phẩm trên.
+      2. Nếu khách hỏi về bệnh (ví dụ: đau dạ dày, tiểu đường), hãy tư vấn các loại rau củ quả phù hợp có trong danh sách và giải thích công dụng dinh dưỡng.
+      3. Giọng điệu thân thiện, ngắn gọn, có ích.
+      4. Nếu khách hỏi sản phẩm không có trong danh sách, hãy khéo léo bảo cửa hàng chưa bán.
+
+      Câu hỏi của khách: "${message}"
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    res.json({ reply: text });
+
+  } catch (err) {
+    logger.error('Chat AI Error:', err); // Sử dụng logger.error
+    res.status(500).json({ error: 'AI đang bận, thử lại sau nhé!' });
+  }
+});
+
+// Endpoint Metrics (Thêm dòng này ngay sau Chatbot)
+app.get('/api/metrics', async (req, res) => {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+});
 // HEALTH CHECK
 app.get('/api/health', async (_req, res) => {
   try {
@@ -1144,65 +1222,104 @@ app.get('/', (req, res) => {
 const port = process.env.PORT || 8080; // Sử dụng PORT từ biến môi trường
 
 async function setupIndexesAndAdmin(){
-  await connectMongo();
-  await db.collection('users').createIndex({ email: 1 }, { unique: true });
-  try { await db.collection('users').createIndex({ keycloakId: 1 }, { unique: true, sparse: true }); } catch(e){ console.error('Index keycloakId error', e.message); }
-  await db.collection('userCarts').createIndex({ userId: 1 }, { unique: true });
-  await db.collection('userWishlists').createIndex({ userId: 1 }, { unique: true });
-  const adminEmail = process.env.ADMIN_EMAIL && normalizeEmail(process.env.ADMIN_EMAIL);
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if(adminEmail && adminPassword){
-    const existing = await db.collection('users').findOne({ email: adminEmail });
-    if(!existing){
-      const passwordHash = await hashPassword(adminPassword);
-      await db.collection('users').insertOne({ email: adminEmail, name: 'Admin', passwordHash, roles: ['admin'], createdAt: new Date(), updatedAt: new Date(), refreshTokens: [] });
-      console.log('Admin user created for', adminEmail);
-    }
-  }
+  await connectMongo();
+  await db.collection('users').createIndex({ email: 1 }, { unique: true });
+  try { 
+    await db.collection('users').createIndex({ keycloakId: 1 }, { unique: true, sparse: true }); 
+  } catch(e){ 
+    // THAY THẾ console.error BẰNG logger.error
+    logger.error('Index keycloakId error', e.message); 
+  }
+  await db.collection('userCarts').createIndex({ userId: 1 }, { unique: true });
+  await db.collection('userWishlists').createIndex({ userId: 1 }, { unique: true });
+  const adminEmail = process.env.ADMIN_EMAIL && normalizeEmail(process.env.ADMIN_EMAIL);
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if(adminEmail && adminPassword){
+    const existing = await db.collection('users').findOne({ email: adminEmail });
+    if(!existing){
+      const passwordHash = await hashPassword(adminPassword);
+      await db.collection('users').insertOne({ email: adminEmail, name: 'Admin', passwordHash, roles: ['admin'], createdAt: new Date(), updatedAt: new Date(), refreshTokens: [] });
+      // THAY THẾ console.log BẰNG logger.info
+      logger.info('Admin user created for', adminEmail);
+    }
+  }
 }
 
-if (!process.env.VERCEL) {
-  // Local / Container mode: start server immediately so container binds TCP port for health checks.
-  // Run DB/index setup asynchronously so startup does not block the process.
-  const server = app.listen(port, () => {
-    console.log(`Organica server running at http://localhost:${port}`);
-  });
+// ==========================================
+// THÊM ĐOẠN NÀY VÀO SERVER.JS (Gần cuối file)
+// ==========================================
 
-  // Perform DB setup in background. Log errors but do not exit the process so
-  // the container remains alive and passes Cloud Run startup probe.
-  setupIndexesAndAdmin().then(() => {
-    console.log('DB indexes and admin user ready');
-  }).catch(err => {
-    console.error('SetupIndexesAndAdmin failed (will continue running):', err && err.stack ? err.stack : err);
-  });
+// 1. Import thư viện (Thêm dòng này lên đầu file server.js cùng các dòng require khác)
 
-  // Graceful shutdown: close HTTP server and Mongo client on SIGTERM/SIGINT
-  async function gracefulShutdown(signal) {
-    console.log(`Received ${signal}, shutting down gracefully...`);
-    try {
-      if (server) {
-        await new Promise(resolve => server.close(resolve));
-        console.log('HTTP server closed');
-      }
-    } catch (e) {
-      console.error('Error closing HTTP server', e && e.stack ? e.stack : e);
-    }
-    try {
-      if (mongoClient && mongoClient.close) {
-        await mongoClient.close();
-        console.log('Mongo client closed');
-      }
-    } catch (e) {
-      console.error('Error closing Mongo client', e && e.stack ? e.stack : e);
-    }
-    process.exit(0);
+// 2. Thêm API Chat (Dán đoạn này vào trước dòng 'if(!process.env.VERCEL)...')
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'Message required' });
+
+    // Lấy danh sách sản phẩm từ DB để Gemini biết mình đang bán gì
+    await connectMongo();
+    const products = await db.collection('products').find({ status: 'active' }).toArray();
+    
+    // Tạo ngữ cảnh (Context) sản phẩm cho AI
+    const productListText = products.map(p => 
+      `- Tên: ${p.name}, Giá: $${p.price}, Danh mục: ${p.categorySlug}`
+    ).join('\n');
+
+    // Cấu hình AI
+    // LƯU Ý: Bạn cần thêm GEMINI_API_KEY vào file .env nhé
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'YOUR_API_KEY_HERE');
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash"});
+
+    const prompt = `
+      Bạn là trợ lý ảo AI của cửa hàng thực phẩm sạch Organica.
+      Dưới đây là danh sách sản phẩm cửa hàng đang bán:
+      ${productListText}
+
+      Quy tắc trả lời:
+      1. Chỉ tư vấn dựa trên danh sách sản phẩm trên.
+      2. Nếu khách hỏi về bệnh (ví dụ: đau dạ dày, tiểu đường), hãy tư vấn các loại rau củ quả phù hợp có trong danh sách và giải thích công dụng dinh dưỡng.
+      3. Giọng điệu thân thiện, ngắn gọn, có ích.
+      4. Nếu khách hỏi sản phẩm không có trong danh sách, hãy khéo léo bảo cửa hàng chưa bán.
+
+      Câu hỏi của khách: "${message}"
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    res.json({ reply: text });
+
+  } catch (err) {
+    console.error('Chat AI Error:', err);
+    res.status(500).json({ error: 'AI đang bận, thử lại sau nhé!' });
   }
+});
 
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// ==========================================
 
+if(!process.env.VERCEL){
+  // Local mode: start server normally
+  setupIndexesAndAdmin().then(()=>{
+    app.listen(port, () => {
+      // THAY THẾ console.log BẰNG logger.info
+      logger.info(`Organica server running at http://localhost:${port}`); 
+      if (keycloak) {
+        // THAY THẾ console.log BẰNG logger.info
+        logger.info('Keycloak realm:', process.env.KEYCLOAK_REALM, 'client:', process.env.KEYCLOAK_CLIENT_ID);
+        // THAY THẾ console.log BẰNG logger.info
+        logger.info('Login URL (Keycloak):', `${process.env.KEYCLOAK_BASE_URL}realms/${process.env.KEYCLOAK_REALM}/protocol/openid-connect/auth`);
+      }
+    });
+  }).catch(err=>{ 
+    // THAY THẾ console.error BẰNG logger.error
+    logger.error('Failed to start server', err); 
+    process.exit(1); 
+});
 } else {
-  // Vercel serverless: prepare indexes eagerly (non-blocking for cold start)
-  setupIndexesAndAdmin().catch(e => console.error('Setup error (serverless):', e && e.message ? e.message : e));
-  module.exports = app;
+  // Vercel serverless: prepare indexes eagerly (non-blocking for cold start
+  // Cần sửa console.error trong khối này nếu bạn muốn deploy lên Vercel
+  setupIndexesAndAdmin().catch(e=>logger.error('Setup error (serverless):', e.message));
+  module.exports = app;
 }

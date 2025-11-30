@@ -1,0 +1,19 @@
+# prometheus.yml
+global:
+  scrape_interval: 15s # Tần suất lấy dữ liệu từ các ứng dụng (15 giây 1 lần)
+  external_labels:
+    monitor: 'organica-monitor'
+
+scrape_configs:
+  # Job này dùng để Prometheus tự giám sát chính nó
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Job này dùng để Prometheus giám sát server Organica (Node.js)
+  - job_name: 'organica-app'
+    scrape_interval: 5s
+    metrics_path: /api/metrics
+    static_configs:
+      # LƯU Ý: host.docker.internal là cách Docker gọi ngược lại localhost của Windows
+      - targets: ['host.docker.internal:3000']

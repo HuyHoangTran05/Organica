@@ -1851,7 +1851,132 @@
   -->
   <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
   <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+<style>
+/* ĐÃ CHỈNH SỬA: KÍCH THƯỚC CỬA SỔ, FONT 16PX, VÀ BONG BÓNG TIN NHẮN TRONG SUỐT */
+.chatbot-toggler{position:fixed;bottom:100px;right:35px;outline:none;border:none;height:60px;width:60px;display:flex;cursor:pointer;align-items:center;justify-content:center;border-radius:50%;background:#72bf44;transition:all 0.2s ease;z-index:9999;box-shadow:0 4px 8px rgba(0,0,0,0.2)}.chatbot-toggler span{color:#fff;position:absolute;font-size:30px}.chatbot-toggler span:last-child,.show-chatbot .chatbot-toggler span:first-child{opacity:0}.show-chatbot .chatbot-toggler span:last-child{opacity:1}.chatbot{position:fixed;right:35px;bottom:90px;width:400px;background:#fff;border-radius:15px;overflow:hidden;opacity:0;font-family:'Roboto',sans-serif;pointer-events:none;transform:scale(.5);transform-origin:bottom right;box-shadow:0 0 128px 0 rgba(0,0,0,.1),0 32px 64px -48px rgba(0,0,0,.5);transition:all .1s ease;z-index:9999}.show-chatbot .chatbot{opacity:1;pointer-events:auto;transform:scale(1)}.chatbot header{padding:16px 0;position:relative;text-align:center;color:#fff;background:#72bf44;box-shadow:0 2px 10px rgba(0,0,0,.1)}.chatbot header h2{font-size:1.4rem;font-weight:500}.chatbot .chatbox{overflow-y:auto;height:400px;padding:30px 20px 70px}.chatbox .chat{display:flex;list-style:none}
 
+/* AVATAR CHATBOT: Định dạng ảnh (đã sửa) */
+.chatbox .incoming .bot-avatar{width:38px;height:38px;border-radius:50%;margin-right:12px;object-fit:cover;align-self:flex-start;background-color:#fff;padding:2px;border:1px solid #ddd}
+
+/* BONG BÓNG TIN NHẮN ĐẾN (BOT) - ĐÃ CHUYỂN SANG P ĐỂ TẠO HIỆU ỨNG TRONG SUỐT */
+.chatbox .incoming p{background:rgba(0,0,0,.08);color:#333;border-radius:10px 10px 10px 0}
+
+/* BONG BÓNG TIN NHẮN ĐI (USER) - ĐÃ CHUYỂN SANG P VÀ LÀM TRONG SUỐT */
+.chatbox .outgoing{justify-content:flex-end;margin:20px 0}
+.chatbox .outgoing p{background:rgba(114,191,68,.9);color:#fff;border-radius:10px 10px 0 10px}
+
+/* CÁC THÀNH PHẦN KHÁC */
+.chatbox .incoming span{display:none} /* Ẩn span cũ */
+.chatbox .outgoing span{display:none} /* Ẩn span cũ (Nếu vẫn còn) */
+
+.chatbox .chat p{white-space:pre-wrap;padding:12px 16px;font-size:16px;line-height:1.4;max-width:75%}.chatbot .chat-input{display:flex;gap:5px;position:absolute;bottom:0;width:100%;background:#fff;padding:3px 20px;border-top:1px solid #ddd}.chat-input textarea{height:55px;width:100%;border:none;outline:none;resize:none;max-height:180px;padding:15px 15px 15px 0;font-size:16px}.chat-input span{align-self:flex-end;color:#72bf44;cursor:pointer;height:55px;display:flex;align-items:center;font-weight:bold;font-size:1.2rem}
+</style>
+
+  <button class="chatbot-toggler">
+    <span><ion-icon name="chatbubble-ellipses-outline"></ion-icon></span>
+    <span><ion-icon name="close-outline"></ion-icon></span>
+  </button>
+
+  <div class="chatbot">
+    <header>
+      <h2>Organica Assistant</h2>
+
+      <span id="close-chat-btn" style="
+        position: absolute; 
+        right: 15px; 
+        top: 50%; 
+        transform: translateY(-50%); 
+        cursor: pointer;
+      "><ion-icon name="close-outline"></ion-icon></span>
+    </header>
+    <ul class="chatbox">
+      <li class="chat incoming">
+        <img src="./assets/images/icon_chatbot.png" class="bot-avatar">
+        <p>Xin chào! Tôi là trợ lý ảo AI. Bạn cần tư vấn thực phẩm hay chế độ dinh dưỡng gì không?</p>
+      </li>
+    </ul>
+    <div class="chat-input">
+      <textarea placeholder="Nhập câu hỏi (VD: Ăn gì tốt cho mắt?)..." required></textarea>
+      <span id="send-btn"><ion-icon name="paper-plane-outline"></ion-icon></span>
+    </div>
+  </div>
+
+  <script>
+    const chatbotToggler = document.querySelector(".chatbot-toggler");
+    const closeChatBtn = document.getElementById("close-chat-btn");
+    const chatbot = document.querySelector(".chatbot");
+    const chatInput = document.querySelector(".chat-input textarea");
+    const sendChatBtn = document.querySelector(".chat-input span");
+    const chatbox = document.querySelector(".chatbox");
+
+    let userMessage = null;
+    const inputInitHeight = chatInput.scrollHeight;
+
+    // Tạo thẻ li chứa tin nhắn
+    const createChatLi = (message, className) => {
+      const chatLi = document.createElement("li");
+      chatLi.classList.add("chat", className);
+      let chatContent = className === "outgoing" 
+        ? `<p></p>` 
+        : `<img src="./assets/images/icon_chatbot.png" class="bot-avatar"><p></p>`;
+      chatLi.innerHTML = chatContent;
+      chatLi.querySelector("p").textContent = message;
+      return chatLi;
+    }
+
+    // Gọi API Server (Gemini)
+    const generateResponse = (chatElement) => {
+      const messageElement = chatElement.querySelector("p");
+      
+      // Gửi request về server của mình
+      fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage })
+      }).then(res => res.json())
+      .then(data => {
+        messageElement.textContent = data.reply || "Xin lỗi, tôi đang gặp lỗi kết nối.";
+      }).catch(() => {
+        messageElement.textContent = "Có lỗi xảy ra. Vui lòng thử lại.";
+      }).finally(() => chatbox.scrollTo(0, chatbox.scrollHeight));
+    }
+
+    const handleChat = () => {
+      userMessage = chatInput.value.trim();
+      if(!userMessage) return;
+
+      // Xóa khung nhập và trả về chiều cao cũ
+      chatInput.value = "";
+      chatInput.style.height = `${inputInitHeight}px`;
+
+      // Hiện tin nhắn người dùng
+      chatbox.appendChild(createChatLi(userMessage, "outgoing"));
+      chatbox.scrollTo(0, chatbox.scrollHeight);
+
+      // Hiện tin nhắn "Đang gõ..." của Bot
+      setTimeout(() => {
+        const incomingChatLi = createChatLi("Đang suy nghĩ...", "incoming");
+        chatbox.appendChild(incomingChatLi);
+        chatbox.scrollTo(0, chatbox.scrollHeight);
+        generateResponse(incomingChatLi);
+      }, 600);
+    }
+
+    // Xử lý sự kiện click và enter
+    chatInput.addEventListener("input", () => {
+      chatInput.style.height = `${inputInitHeight}px`;
+      chatInput.style.height = `${chatInput.scrollHeight}px`;
+    });
+    chatInput.addEventListener("keydown", (e) => {
+      if(e.key === "Enter" && !e.shiftKey && window.innerWidth > 800) {
+        e.preventDefault();
+        handleChat();
+      }
+    });
+    sendChatBtn.addEventListener("click", handleChat);
+    closeChatBtn.addEventListener("click", () => document.body.classList.remove("show-chatbot"));
+    chatbotToggler.addEventListener("click", () => document.body.classList.toggle("show-chatbot"));
+  </script>
 </body>
 
 </html>
