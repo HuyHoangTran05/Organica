@@ -1,5 +1,20 @@
 // Fetch products from API and render into homepage sections
 (function(){
+  function authHeaders(extra){
+    const h = Object.assign({}, extra||{});
+    try{
+      const at = localStorage.getItem('accessToken');
+      if(at) h['Authorization'] = 'Bearer ' + at;
+    }catch(_){ }
+    return h;
+  }
+  async function authFetch(url, options){
+    const opts = Object.assign({}, options||{});
+    opts.headers = authHeaders(opts.headers);
+    const res = await fetch(url, opts);
+    if(res.status === 401){ window.location.href = '/login.html'; throw new Error('Unauthorized'); }
+    return res;
+  }
   const PRODUCTS_API = '/api/products';
   const TOP_API = '/api/top-products';
 
@@ -73,7 +88,7 @@
 
   async function refreshHeaderCart(){
     try{
-      const res = await fetch('/api/cart');
+      const res = await authFetch('/api/cart');
       const data = await res.json();
       const badge = document.querySelector('[data-panel-btn="cart"] .btn-badge');
       if(badge){ badge.textContent = String(data.items?.length||0).padStart(2,'0'); }
@@ -92,7 +107,7 @@
           btn.addEventListener('click', async (ev)=>{
             ev.preventDefault();
             const id = btn.getAttribute('data-remove-id');
-            await fetch(`/api/cart/remove/${id}`, { method: 'DELETE' });
+            await authFetch(`/api/cart/remove/${id}`, { method: 'DELETE' });
             refreshHeaderCart();
           });
         });
@@ -104,7 +119,7 @@
 
   async function refreshHeaderWishlist(){
     try{
-      const res = await fetch('/api/wishlist');
+      const res = await authFetch('/api/wishlist');
       const data = await res.json();
       const badge = document.querySelector('[data-panel-btn="whishlist"] .btn-badge');
       if(badge){ badge.textContent = String(data.items?.length||0).padStart(2,'0'); }
@@ -122,7 +137,7 @@
           btn.addEventListener('click', async (ev)=>{
             ev.preventDefault();
             const id = btn.getAttribute('data-wl-remove-id');
-            await fetch(`/api/wishlist/remove/${id}`, { method: 'DELETE' });
+            await authFetch(`/api/wishlist/remove/${id}`, { method: 'DELETE' });
             refreshHeaderWishlist();
           });
         });
@@ -171,7 +186,7 @@
         document.querySelectorAll('.btn-add-to-cart').forEach(btn => {
           btn.addEventListener('click', async () => {
             const id = btn.getAttribute('data-product-id');
-            await fetch('/api/cart/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId: id, quantity: 1 }) });
+            await authFetch('/api/cart/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId: id, quantity: 1 }) });
             refreshHeaderCart();
           });
         });
@@ -184,7 +199,7 @@
           btn.addEventListener('click', async (ev) => {
             ev.preventDefault();
             const id = btn.getAttribute('data-product-id');
-            await fetch('/api/wishlist/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId: id }) });
+            await authFetch('/api/wishlist/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId: id }) });
             refreshHeaderWishlist();
           });
         });

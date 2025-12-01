@@ -102,7 +102,7 @@ app.use(express.static(publicDir));
 
 // MongoDB client
 // Mongo config: allow a dedicated MONGO_DB_NAME to avoid confusion with MySQL DB_NAME
-const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
+const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017' || 'mongodb+srv://manhndvinhyen_db_user:ZO0ZVeYBdzI6ehse@organica.b3ugidw.mongodb.net/organica?retryWrites=true&w=majority';
 const DB_NAME = process.env.MONGO_DB_NAME || process.env.DB_NAME || 'organica';
 let mongoClient;
 let db;
@@ -153,7 +153,7 @@ function generateRefreshToken(user){
   const tokenHash = crypto.createHash('sha256').update(token + REFRESH_TOKEN_PEPPER).digest('hex');
   const now = new Date();
   const expiresAt = new Date(now.getTime() + REFRESH_TOKEN_TTL_SEC * 1000);
-  return { token, tokenHash, jti, createdAt: now, expiresAt };
+  return { token, tokenHash, jti, createdAt: now, expiresAt: expiresAt };
 }
 
 async function saveRefreshToken(userId, tokenRecord){
@@ -200,6 +200,14 @@ function authRequired(){
       req.user = { id: decoded.sub, roles: decoded.roles||['user'] };
       return next();
     }catch(e){ return res.status(401).json({ error: 'Invalid token' }); }
+  };
+}
+
+// Require that a user context exists (works for Keycloak-mapped sessions or JWT)
+function loginRequired(){
+  return (req, res, next) => {
+    if (req.user && req.user.id) return next();
+    return res.status(401).json({ error: 'Login required', code: 'AUTH_REQUIRED' });
   };
 }
 
@@ -457,107 +465,75 @@ app.get('/api/categories', async (_req, res) => {
 });
 
 // CART ENDPOINTS
-app.get('/api/cart', async (req, res) => {
+app.get('/api/cart', loginRequired(), async (req, res) => {
   try {
-    if(req.user){
-      const doc = await getUserCartDoc(req.user.id);
-      const asMap = {};
-      for(const it of doc.items){ asMap[String(it.productId)] = Math.max(1, parseInt(it.quantity,10)||1); }
-      const result = await buildCartResponse(asMap);
-      return res.json(result);
-    }
-    const cart = getSessionCart(req);
-    const result = await buildCartResponse(cart);
-    res.json(result);
+    const doc = await getUserCartDoc(req.user.id);
+    const asMap = {};
+    for(const it of doc.items){ asMap[String(it.productId)] = Math.max(1, parseInt(it.quantity,10)||1); }
+    const result = await buildCartResponse(asMap);
+    return res.json(result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to load cart' });
   }
 });
 
-app.post('/api/cart/add', async (req, res) => {
+app.post('/api/cart/add', loginRequired(), async (req, res) => {
   try {
     const { productId, quantity = 1 } = req.body;
     if(!productId) return res.status(400).json({ error: 'productId required' });
     // ensure product exists
     const prod = await getProductBasic(productId);
     if(!prod) return res.status(404).json({ error: 'Product not found' });
-    if(req.user){
-      const doc = await getUserCartDoc(req.user.id);
-      const map = new Map(doc.items.map(it=>[String(it.productId), it.quantity]));
-      const current = parseInt(map.get(String(productId))||0,10);
-      map.set(String(productId), Math.max(1, current + (parseInt(quantity,10)||1)));
-      const items = Array.from(map.entries()).map(([pid,q])=>({ productId: new ObjectId(String(pid)), quantity: q }));
-      await saveUserCart(req.user.id, items);
-      const asMap = {}; for(const it of items){ asMap[String(it.productId)] = it.quantity; }
-      return res.json(await buildCartResponse(asMap));
-    } else {
-      const cart = getSessionCart(req);
-      const current = parseInt(cart[productId]||0,10);
-      cart[productId] = Math.max(1, current + (parseInt(quantity,10)||1));
-      const result = await buildCartResponse(cart);
-      return res.json(result);
-    }
+    const doc = await getUserCartDoc(req.user.id);
+    const map = new Map(doc.items.map(it=>[String(it.productId), it.quantity]));
+    const current = parseInt(map.get(String(productId))||0,10);
+    map.set(String(productId), Math.max(1, current + (parseInt(quantity,10)||1)));
+    const items = Array.from(map.entries()).map(([pid,q])=>({ productId: new ObjectId(String(pid)), quantity: q }));
+    await saveUserCart(req.user.id, items);
+    const asMap = {}; for(const it of items){ asMap[String(it.productId)] = it.quantity; }
+    return res.json(await buildCartResponse(asMap));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to add to cart' });
   }
 });
 
-app.patch('/api/cart/update', async (req, res) => {
+app.patch('/api/cart/update', loginRequired(), async (req, res) => {
   try {
     const { productId, quantity } = req.body;
     if(!productId) return res.status(400).json({ error: 'productId required' });
-    if(req.user){
-      const doc = await getUserCartDoc(req.user.id);
-      const map = new Map(doc.items.map(it=>[String(it.productId), it.quantity]));
-      map.set(String(productId), Math.max(1, parseInt(quantity,10)||1));
-      const items = Array.from(map.entries()).map(([pid,q])=>({ productId: new ObjectId(String(pid)), quantity: q }));
-      await saveUserCart(req.user.id, items);
-      const asMap = {}; for(const it of items){ asMap[String(it.productId)] = it.quantity; }
-      return res.json(await buildCartResponse(asMap));
-    } else {
-      const cart = getSessionCart(req);
-      cart[productId] = Math.max(1, parseInt(quantity,10)||1);
-      const result = await buildCartResponse(cart);
-      return res.json(result);
-    }
+    const doc = await getUserCartDoc(req.user.id);
+    const map = new Map(doc.items.map(it=>[String(it.productId), it.quantity]));
+    map.set(String(productId), Math.max(1, parseInt(quantity,10)||1));
+    const items = Array.from(map.entries()).map(([pid,q])=>({ productId: new ObjectId(String(pid)), quantity: q }));
+    await saveUserCart(req.user.id, items);
+    const asMap = {}; for(const it of items){ asMap[String(it.productId)] = it.quantity; }
+    return res.json(await buildCartResponse(asMap));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to update cart' });
   }
 });
 
-app.delete('/api/cart/remove/:productId', async (req, res) => {
+app.delete('/api/cart/remove/:productId', loginRequired(), async (req, res) => {
   try {
     const { productId } = req.params;
-    if(req.user){
-      const doc = await getUserCartDoc(req.user.id);
-      const items = doc.items.filter(it=> String(it.productId) !== String(productId));
-      await saveUserCart(req.user.id, items);
-      const asMap = {}; for(const it of items){ asMap[String(it.productId)] = it.quantity; }
-      return res.json(await buildCartResponse(asMap));
-    } else {
-      const cart = getSessionCart(req);
-      delete cart[productId];
-      const result = await buildCartResponse(cart);
-      return res.json(result);
-    }
+    const doc = await getUserCartDoc(req.user.id);
+    const items = doc.items.filter(it=> String(it.productId) !== String(productId));
+    await saveUserCart(req.user.id, items);
+    const asMap = {}; for(const it of items){ asMap[String(it.productId)] = it.quantity; }
+    return res.json(await buildCartResponse(asMap));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to remove item' });
   }
 });
 
-app.delete('/api/cart/clear', async (req, res) => {
+app.delete('/api/cart/clear', loginRequired(), async (req, res) => {
   try {
-    if(req.user){
-      await saveUserCart(req.user.id, []);
-      return res.json(await buildCartResponse({}));
-    } else {
-      req.session.cart = {};
-      return res.json(await buildCartResponse({}));
-    }
+    await saveUserCart(req.user.id, []);
+    return res.json(await buildCartResponse({}));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to clear cart' });
@@ -581,82 +557,56 @@ async function buildWishlistResponse(wishlist){
   return { items };
 }
 
-app.get('/api/wishlist', async (req, res) => {
+app.get('/api/wishlist', loginRequired(), async (req, res) => {
   try{
-    if(req.user){
-      const doc = await getUserWishlistDoc(req.user.id);
-      const map = {}; for(const id of doc.items){ map[String(id)] = true; }
-      return res.json(await buildWishlistResponse(map));
-    }
-    const wl = getSessionWishlist(req);
-    return res.json(await buildWishlistResponse(wl));
+    const doc = await getUserWishlistDoc(req.user.id);
+    const map = {}; for(const id of doc.items){ map[String(id)] = true; }
+    return res.json(await buildWishlistResponse(map));
   }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to load wishlist' }); }
 });
 
-app.post('/api/wishlist/add', async (req, res) => {
+app.post('/api/wishlist/add', loginRequired(), async (req, res) => {
   try{
     const { productId } = req.body || {};
     if(!productId) return res.status(400).json({ error: 'productId required' });
     const prod = await getProductBasic(productId);
     if(!prod) return res.status(404).json({ error: 'Product not found' });
-    if(req.user){
-      const doc = await getUserWishlistDoc(req.user.id);
-      const set = new Set(doc.items.map(id=>String(id)));
-      set.add(String(productId));
-      const items = Array.from(set).map(pid=> new ObjectId(String(pid)));
-      await saveUserWishlist(req.user.id, items);
-      const map = {}; for(const id of items){ map[String(id)] = true; }
-      return res.json(await buildWishlistResponse(map));
-    } else {
-      const wl = getSessionWishlist(req);
-      wl[productId] = true;
-      return res.json(await buildWishlistResponse(wl));
-    }
+    const doc = await getUserWishlistDoc(req.user.id);
+    const set = new Set(doc.items.map(id=>String(id)));
+    set.add(String(productId));
+    const items = Array.from(set).map(pid=> new ObjectId(String(pid)));
+    await saveUserWishlist(req.user.id, items);
+    const map = {}; for(const id of items){ map[String(id)] = true; }
+    return res.json(await buildWishlistResponse(map));
   }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to add to wishlist' }); }
 });
 
-app.delete('/api/wishlist/remove/:productId', async (req, res) => {
+app.delete('/api/wishlist/remove/:productId', loginRequired(), async (req, res) => {
   try{
     const { productId } = req.params;
-    if(req.user){
-      const doc = await getUserWishlistDoc(req.user.id);
-      const items = doc.items.filter(id=> String(id) !== String(productId));
-      await saveUserWishlist(req.user.id, items);
-      const map = {}; for(const id of items){ map[String(id)] = true; }
-      return res.json(await buildWishlistResponse(map));
-    } else {
-      const wl = getSessionWishlist(req);
-      delete wl[productId];
-      return res.json(await buildWishlistResponse(wl));
-    }
+    const doc = await getUserWishlistDoc(req.user.id);
+    const items = doc.items.filter(id=> String(id) !== String(productId));
+    await saveUserWishlist(req.user.id, items);
+    const map = {}; for(const id of items){ map[String(id)] = true; }
+    return res.json(await buildWishlistResponse(map));
   }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to remove from wishlist' }); }
 });
 
-app.delete('/api/wishlist/clear', async (req, res) => {
+app.delete('/api/wishlist/clear', loginRequired(), async (req, res) => {
   try{
-    if(req.user){
-      await saveUserWishlist(req.user.id, []);
-      return res.json(await buildWishlistResponse({}));
-    } else {
-      req.session.wishlist = {};
-      return res.json(await buildWishlistResponse({}));
-    }
+    await saveUserWishlist(req.user.id, []);
+    return res.json(await buildWishlistResponse({}));
   }catch(err){ console.error(err); res.status(500).json({ error: 'Failed to clear wishlist' }); }
 });
 
 // ORDER ENDPOINT
-app.post('/api/orders', async (req, res) => {
+app.post('/api/orders', loginRequired(), async (req, res) => {
   try {
     await connectMongo();
     const { firstName, lastName, email, phone, address, city, zip } = req.body || {};
-    let cart;
-    if(req.user){
-      const doc = await getUserCartDoc(req.user.id);
-      const asMap = {}; for(const it of doc.items){ asMap[String(it.productId)] = Math.max(1, parseInt(it.quantity,10)||1); }
-      cart = await buildCartResponse(asMap);
-    } else {
-      cart = await buildCartResponse(getSessionCart(req));
-    }
+    const doc = await getUserCartDoc(req.user.id);
+    const asMap = {}; for(const it of doc.items){ asMap[String(it.productId)] = Math.max(1, parseInt(it.quantity,10)||1); }
+    const cart = await buildCartResponse(asMap);
     if(!cart.items.length) return res.status(400).json({ error: 'Cart is empty' });
 
     const orderNumber = 'ORD-' + Date.now().toString(36).toUpperCase();
@@ -674,7 +624,7 @@ app.post('/api/orders', async (req, res) => {
     };
     if(req.user){ orderDoc.userId = new ObjectId(String(req.user.id)); }
     const r = await db.collection('orders').insertOne(orderDoc);
-    if(req.user){ await saveUserCart(req.user.id, []); } else { req.session.cart = {}; }
+    await saveUserCart(req.user.id, []);
     res.json({ orderId: String(r.insertedId), orderNumber, total: cart.total });
   } catch (err) {
     console.error(err);
@@ -1219,7 +1169,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8080; // Sử dụng PORT từ biến môi trường
 
 async function setupIndexesAndAdmin(){
   await connectMongo();

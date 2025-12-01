@@ -1,9 +1,21 @@
 // Checkout form submit to create order
 (function(){
+  function authHeaders(extra){
+    const h = Object.assign({}, extra||{});
+    try{ const at = localStorage.getItem('accessToken'); if(at) h['Authorization'] = 'Bearer ' + at; }catch(_){ }
+    return h;
+  }
+  async function authFetch(url, options){
+    const opts = Object.assign({}, options||{});
+    opts.headers = authHeaders(opts.headers);
+    const res = await fetch(url, opts);
+    if(res.status === 401){ window.location.href = '/login.html'; throw new Error('Unauthorized'); }
+    return res;
+  }
   function fmt(n){ return `$${Number(n||0).toFixed(2)}`; }
 
   async function fetchCart(){
-    const res = await fetch('/api/cart');
+    const res = await authFetch('/api/cart');
     return res.json();
   }
 
@@ -25,7 +37,7 @@
         panel.querySelectorAll('[data-remove-id]')?.forEach(btn=>{
           btn.addEventListener('click', async (ev)=>{
             ev.preventDefault();
-            await fetch(`/api/cart/remove/${btn.getAttribute('data-remove-id')}`, { method: 'DELETE' });
+            await authFetch(`/api/cart/remove/${btn.getAttribute('data-remove-id')}`, { method: 'DELETE' });
             await renderSummary();
           });
         });
@@ -60,17 +72,17 @@
       row.querySelector('[data-act="inc"]').addEventListener('click', async ()=>{
         const item = (data.items||[]).find(x=>String(x.productId)===String(id));
         const next = (item?.quantity||1)+1;
-        await fetch('/api/cart/update', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({productId:id, quantity: next}) });
+        await authFetch('/api/cart/update', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({productId:id, quantity: next}) });
         await renderSummary();
       });
       row.querySelector('[data-act="dec"]').addEventListener('click', async ()=>{
         const item = (data.items||[]).find(x=>String(x.productId)===String(id));
         const next = Math.max(1, (item?.quantity||1)-1);
-        await fetch('/api/cart/update', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({productId:id, quantity: next}) });
+        await authFetch('/api/cart/update', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({productId:id, quantity: next}) });
         await renderSummary();
       });
       row.querySelector('[data-act="rm"]').addEventListener('click', async ()=>{
-        await fetch(`/api/cart/remove/${id}`, { method:'DELETE' });
+        await authFetch(`/api/cart/remove/${id}`, { method:'DELETE' });
         await renderSummary();
       });
     });
@@ -92,7 +104,7 @@
       zip: data['Zip']||data['zip']||''
     };
     try{
-      const res = await fetch('/api/orders', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const res = await authFetch('/api/orders', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
       const json = await res.json();
       if(!res.ok){ throw new Error(json.error||'Order failed'); }
       alert(`Đặt hàng thành công! Mã đơn: ${json.orderNumber}`);
