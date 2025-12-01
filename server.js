@@ -102,7 +102,7 @@ app.use(express.static(publicDir));
 
 // MongoDB client
 // Mongo config: allow a dedicated MONGO_DB_NAME to avoid confusion with MySQL DB_NAME
-const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
+const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017' || 'mongodb+srv://manhndvinhyen_db_user:ZO0ZVeYBdzI6ehse@organica.b3ugidw.mongodb.net/organica?retryWrites=true&w=majority';
 const DB_NAME = process.env.MONGO_DB_NAME || process.env.DB_NAME || 'organica';
 let mongoClient;
 let db;
@@ -153,7 +153,7 @@ function generateRefreshToken(user){
   const tokenHash = crypto.createHash('sha256').update(token + REFRESH_TOKEN_PEPPER).digest('hex');
   const now = new Date();
   const expiresAt = new Date(now.getTime() + REFRESH_TOKEN_TTL_SEC * 1000);
-  return { token, tokenHash, jti, createdAt: now, expiresAt };
+  return { token, tokenHash, jti, createdAt: now, expiresAt: expiresAt };
 }
 
 async function saveRefreshToken(userId, tokenRecord){
@@ -1219,7 +1219,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8080; // Sử dụng PORT từ biến môi trường
 
 async function setupIndexesAndAdmin(){
   await connectMongo();
