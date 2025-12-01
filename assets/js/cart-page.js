@@ -1,7 +1,19 @@
 // Dynamic cart page renderer
 (function(){
+  function authHeaders(extra){
+    const h = Object.assign({}, extra||{});
+    try{ const at = localStorage.getItem('accessToken'); if(at) h['Authorization'] = 'Bearer ' + at; }catch(_){ }
+    return h;
+  }
+  async function authFetch(url, options){
+    const opts = Object.assign({}, options||{});
+    opts.headers = authHeaders(opts.headers);
+    const res = await fetch(url, opts);
+    if(res.status === 401){ window.location.href = '/login.html'; throw new Error('Unauthorized'); }
+    return res;
+  }
   async function fetchCart(){
-    const res = await fetch('/api/cart');
+    const res = await authFetch('/api/cart');
     return res.json();
   }
 
@@ -25,7 +37,7 @@
         panel.querySelectorAll('[data-remove-id]')?.forEach(btn=>{
           btn.addEventListener('click', async (ev)=>{
             ev.preventDefault();
-            await fetch(`/api/cart/remove/${btn.getAttribute('data-remove-id')}`, { method: 'DELETE' });
+            await authFetch(`/api/cart/remove/${btn.getAttribute('data-remove-id')}`, { method: 'DELETE' });
             await render();
           });
         });
@@ -72,7 +84,7 @@
       const send = async (qty)=>{
         const q = Math.max(1, parseInt(qty,10)||1);
         input.value = q;
-        await fetch('/api/cart/update', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({productId: id, quantity: q}) });
+        await authFetch('/api/cart/update', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({productId: id, quantity: q}) });
         await render();
       };
       inc.addEventListener('click', ()=> send((parseInt(input.value,10)||1)+1));
@@ -82,7 +94,7 @@
         send(cur-1);
       });
       input.addEventListener('change', ()=> send(parseInt(input.value,10)||1));
-      remove.addEventListener('click', async ()=>{ await fetch(`/api/cart/remove/${id}`, { method:'DELETE' }); await render(); });
+      remove.addEventListener('click', async ()=>{ await authFetch(`/api/cart/remove/${id}`, { method:'DELETE' }); await render(); });
     });
 
     refreshHeader();

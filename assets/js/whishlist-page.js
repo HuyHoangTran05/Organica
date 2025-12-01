@@ -1,14 +1,26 @@
 // Render wishlist page and bind actions
 (function(){
+  function authHeaders(extra){
+    const h = Object.assign({}, extra||{});
+    try{ const at = localStorage.getItem('accessToken'); if(at) h['Authorization'] = 'Bearer ' + at; }catch(_){ }
+    return h;
+  }
+  async function authFetch(url, options){
+    const opts = Object.assign({}, options||{});
+    opts.headers = authHeaders(opts.headers);
+    const res = await fetch(url, opts);
+    if(res.status === 401){ window.location.href = '/login.html'; throw new Error('Unauthorized'); }
+    return res;
+  }
   function fmt(n){ return `$${Number(n||0).toFixed(2)}`; }
 
   async function fetchWishlist(){
-    const res = await fetch('/api/wishlist');
+    const res = await authFetch('/api/wishlist');
     return res.json();
   }
 
   async function fetchCart(){
-    const res = await fetch('/api/cart');
+    const res = await authFetch('/api/cart');
     return res.json();
   }
 
@@ -31,7 +43,7 @@
           btn.addEventListener('click', async (ev)=>{
             ev.preventDefault();
             const id = btn.getAttribute('data-wl-remove-id');
-            await fetch(`/api/wishlist/remove/${id}`, { method: 'DELETE' });
+            await authFetch(`/api/wishlist/remove/${id}`, { method: 'DELETE' });
             await render();
           });
         });
@@ -64,11 +76,11 @@
     list.querySelectorAll('.wishlist-item').forEach(row=>{
       const id = row.getAttribute('data-id');
       row.querySelector('[data-act="addcart"]').addEventListener('click', async ()=>{
-        await fetch('/api/cart/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId:id, quantity: 1 }) });
+        await authFetch('/api/cart/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId:id, quantity: 1 }) });
         await refreshHeaderCart();
       });
       row.querySelector('[data-act="remove"]').addEventListener('click', async ()=>{
-        await fetch(`/api/wishlist/remove/${id}`, { method:'DELETE' });
+        await authFetch(`/api/wishlist/remove/${id}`, { method:'DELETE' });
         await render();
       });
     });
@@ -95,7 +107,7 @@
           btn.addEventListener('click', async (ev)=>{
             ev.preventDefault();
             const id = btn.getAttribute('data-remove-id');
-            await fetch(`/api/cart/remove/${id}`, { method: 'DELETE' });
+            await authFetch(`/api/cart/remove/${id}`, { method: 'DELETE' });
             await refreshHeaderCart();
           });
         });
